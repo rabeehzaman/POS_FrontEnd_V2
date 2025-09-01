@@ -33,6 +33,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script src="/print.min.js"></script>
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>
           {children}
