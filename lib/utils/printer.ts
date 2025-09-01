@@ -245,7 +245,14 @@ export async function printTestPage(): Promise<boolean> {
   const toastId = toast.loading('Printing test page...')
 
   try {
-    const testPageContent = `
+    // Create a unique ID for the temporary element
+    const printElementId = `print-test-${Date.now()}`
+    
+    // Create temporary DOM element
+    const testElement = document.createElement('div')
+    testElement.id = printElementId
+    testElement.style.display = 'none'
+    testElement.innerHTML = `
       <div style="font-family: Arial, sans-serif; padding: 20px;">
         <h1 style="color: #333; border-bottom: 2px solid #333; padding-bottom: 10px;">
           POS Printer Test
@@ -264,11 +271,14 @@ export async function printTestPage(): Promise<boolean> {
         </p>
       </div>
     `
+    
+    // Add to DOM
+    document.body.appendChild(testElement)
 
     return new Promise((resolve) => {
       try {
         printJS({
-          printable: testPageContent,
+          printable: printElementId,
           type: 'html',
           showModal: true,
           modalMessage: 'Preparing test page...',
@@ -278,19 +288,35 @@ export async function printTestPage(): Promise<boolean> {
           style: 'body { font-family: Arial, sans-serif; }',
           onPrintDialogClose: () => {
             console.log('Test print dialog closed')
+            // Clean up the temporary element
+            document.body.removeChild(testElement)
           },
           onError: (error: Error) => {
             console.error('Test print error:', error)
+            // Clean up the temporary element
+            document.body.removeChild(testElement)
             toast.error('Test print failed. Please check your printer.', { id: toastId })
             resolve(false)
           }
         })
 
         toast.success('Test page sent to printer!', { id: toastId })
+        
+        // Clean up after a delay to ensure printing completes
+        setTimeout(() => {
+          if (document.body.contains(testElement)) {
+            document.body.removeChild(testElement)
+          }
+        }, 5000)
+        
         resolve(true)
 
       } catch (error) {
         console.error('Test print setup error:', error)
+        // Clean up the temporary element
+        if (document.body.contains(testElement)) {
+          document.body.removeChild(testElement)
+        }
         toast.error('Failed to setup test print.', { id: toastId })
         resolve(false)
       }
