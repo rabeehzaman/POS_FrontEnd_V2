@@ -16,18 +16,20 @@ interface ProductGridProps {
   onAddToCart: (product: Product, quantity?: number, unit?: string, customPrice?: number) => void
   searchQuery?: string
   isLoading?: boolean
+  lastSoldPrices?: Record<string, number>
 }
 
 export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({ 
   products, 
   onAddToCart, 
   searchQuery = '', 
-  isLoading = false 
+  isLoading = false,
+  lastSoldPrices = {}
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const { taxMode } = useSettings()
+  const { taxMode, pricingStrategy, selectedBranch } = useSettings()
 
   // Get unique categories
   const categories = useMemo(() => {
@@ -175,6 +177,9 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
                 products: filteredProducts,
                 columnCount: gridConfig.columnCount,
                 taxMode,
+                pricingStrategy,
+                lastSoldPrices,
+                selectedBranch,
                 onAddToCart,
               }}
             >
@@ -190,10 +195,13 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
 interface ProductCardProps {
   product: Product
   taxMode: 'inclusive' | 'exclusive'
+  pricingStrategy: 'default' | 'lastsold'
+  lastSoldPrices: Record<string, number>
+  selectedBranch: { id: string; name: string } | null
   onAddToCart: (product: Product, quantity?: number, unit?: string, customPrice?: number) => void
 }
 
-const ProductCard = React.memo(function ProductCard({ product, taxMode, onAddToCart }: ProductCardProps) {
+const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart }: ProductCardProps) {
   const [showUnitDialog, setShowUnitDialog] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
   
@@ -203,8 +211,26 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, onAddToC
   // Check if product has unit conversion capabilities
   const hasUnitConversion = product.hasConversion && product.piecesPerCarton && product.piecesPerCarton > 1
 
-  // Calculate display price based on tax mode
-  const displayPrice = taxMode === 'inclusive' ? product.price * 1.15 : product.price
+  // Calculate display price with LastSold pricing and fallback to default
+  let basePrice = product.price // Start with default price
+  let isLastSoldPrice = false
+  
+  // Try to get LastSold price if strategy is enabled
+  if (pricingStrategy === 'lastsold' && selectedBranch?.id) {
+    const lastSoldPriceKey = `${product.id}_PCS_${selectedBranch.id}_${taxMode}` // Pattern: itemId_unit_branchId_taxMode
+    const lastSoldPrice = lastSoldPrices[lastSoldPriceKey]
+    
+    if (lastSoldPrice) {
+      basePrice = lastSoldPrice
+      isLastSoldPrice = true
+      // LastSold prices are already tax-adjusted, so no need to apply tax again
+    }
+  }
+  
+  // Apply tax adjustment only if using default price (not LastSold)
+  const displayPrice = !isLastSoldPrice && taxMode === 'inclusive' 
+    ? basePrice * 1.15 
+    : basePrice
 
   // Click handlers
   const handleMouseDown = () => {
@@ -269,8 +295,15 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, onAddToC
 
         {/* Price - Fixed at bottom */}
         <div className="text-center py-0.5 mt-auto">
-          <div className="text-lg font-semibold tracking-tight">
-            {displayPrice.toFixed(2)}
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <div className="text-lg font-semibold tracking-tight">
+              {displayPrice.toFixed(2)}
+            </div>
+            {isLastSoldPrice && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 h-4">
+                LS
+              </Badge>
+            )}
           </div>
           <div className="text-xs text-muted-foreground/60">
             per unit {taxMode === 'inclusive' ? '(inc. tax)' : ''}
@@ -306,6 +339,9 @@ interface VirtualizedProductCardProps {
     products: Product[]
     columnCount: number
     taxMode: 'inclusive' | 'exclusive'
+    pricingStrategy: 'default' | 'lastsold'
+    lastSoldPrices: Record<string, number>
+    selectedBranch: { id: string; name: string } | null
     onAddToCart: (product: Product, quantity?: number, unit?: string, customPrice?: number) => void
   }
 }
@@ -316,7 +352,7 @@ const VirtualizedProductCard = React.memo<VirtualizedProductCardProps>(function 
   style, 
   data 
 }) {
-  const { products, columnCount, taxMode, onAddToCart } = data
+  const { products, columnCount, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart } = data
   const productIndex = rowIndex * columnCount + columnIndex
   const product = products[productIndex]
 
@@ -329,6 +365,9 @@ const VirtualizedProductCard = React.memo<VirtualizedProductCardProps>(function 
       <ProductCard
         product={product}
         taxMode={taxMode}
+        pricingStrategy={pricingStrategy}
+        lastSoldPrices={lastSoldPrices}
+        selectedBranch={selectedBranch}
         onAddToCart={onAddToCart}
       />
     </div>

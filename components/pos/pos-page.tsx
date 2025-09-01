@@ -13,7 +13,8 @@ import {
   useCartActions, 
   useDataActions,
   useCartSummary,
-  useCustomerSelection 
+  useCustomerSelection,
+  useLastSoldPricing
 } from '@/lib/hooks/use-shallow-store'
 import { toast } from 'sonner'
 
@@ -22,6 +23,7 @@ export function POSPage() {
   const debouncedSearchQuery = useDebounce(searchQuery, 200)
   const [isOnline, setIsOnline] = useState(true)
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+  const [lastSoldPrices, setLastSoldPrices] = useState<Record<string, number>>({})
 
   // Monitor online status
   useEffect(() => {
@@ -46,6 +48,43 @@ export function POSPage() {
   const { setProducts, setCustomers } = useDataActions()
   const { setSelectedCustomer } = useCustomerSelection()
   const { cartCount } = useCartSummary()
+  const { bulkGetLastSoldPrices, pricingStrategy, selectedBranch, taxMode } = useLastSoldPricing()
+
+  // Fetch LastSold prices for all products
+  const fetchLastSoldPrices = useCallback(async () => {
+    if (pricingStrategy !== 'lastsold' || !selectedBranch?.id || products.length === 0) {
+      setLastSoldPrices({})
+      return
+    }
+
+    try {
+      // Create items array for bulk fetch
+      const items = products.map(product => ({
+        itemId: product.id,
+        unit: 'PCS' // Default unit for product card display
+      }))
+
+      const result = await bulkGetLastSoldPrices({
+        items,
+        branchId: selectedBranch.id,
+        taxMode
+      })
+
+      // Convert result to simple price map
+      // Backend returns keys in format: itemId_unit_branchId_taxMode
+      const priceMap: Record<string, number> = {}
+      Object.entries(result).forEach(([key, data]) => {
+        if (data && data.price) {
+          priceMap[key] = data.price
+        }
+      })
+
+      setLastSoldPrices(priceMap)
+    } catch (error) {
+      console.error('Failed to fetch LastSold prices:', error)
+      setLastSoldPrices({})
+    }
+  }, [pricingStrategy, selectedBranch, taxMode, products, bulkGetLastSoldPrices])
 
   // Simple data fetching without cached hooks to avoid infinite loops
   useEffect(() => {
@@ -77,6 +116,13 @@ export function POSPage() {
 
     fetchInitialData()
   }, [products.length, setProducts, setCustomers])
+
+  // Fetch LastSold prices when products or pricing settings change
+  useEffect(() => {
+    if (products.length > 0) {
+      fetchLastSoldPrices()
+    }
+  }, [products.length, pricingStrategy, selectedBranch, taxMode, fetchLastSoldPrices])
 
   const handleSpotlightAddToCart = useCallback((product: Product, quantity = 1, unit?: string, customPrice?: number) => {
     addToCart(product, quantity, unit, customPrice)
@@ -135,6 +181,7 @@ export function POSPage() {
             onAddToCart={handleSpotlightAddToCart}
             searchQuery={debouncedSearchQuery}
             isLoading={isLoadingProducts}
+            lastSoldPrices={lastSoldPrices}
           />
         </div>
         

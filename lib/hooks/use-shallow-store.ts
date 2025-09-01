@@ -31,13 +31,15 @@ export const useSettings = () => {
   const selectedBranch = usePOSStore(state => state.selectedBranch)
   const invoiceMode = usePOSStore(state => state.invoiceMode)
   const printerSettings = usePOSStore(state => state.printerSettings)
+  const pricingStrategy = usePOSStore(state => state.pricingStrategy)
 
   return useMemo(() => ({
     taxMode,
     selectedBranch,
     invoiceMode,
     printerSettings,
-  }), [taxMode, selectedBranch, invoiceMode, printerSettings])
+    pricingStrategy,
+  }), [taxMode, selectedBranch, invoiceMode, printerSettings, pricingStrategy])
 }
 
 // Actions are stable in Zustand, so we can access them directly
@@ -116,4 +118,19 @@ export const useCartSummary = () => {
     
     return { cartCount, subtotal, tax, total, taxMode }
   }, [cart, taxMode])
+}
+
+// LastSold pricing hooks
+export const useLastSoldPricing = () => {
+  const bulkGetLastSoldPrices = usePOSStore(state => state.bulkGetLastSoldPrices)
+  const pricingStrategy = usePOSStore(state => state.pricingStrategy)
+  const selectedBranch = usePOSStore(state => state.selectedBranch)
+  const taxMode = usePOSStore(state => state.taxMode)
+
+  return useMemo(() => ({
+    bulkGetLastSoldPrices,
+    pricingStrategy,
+    selectedBranch,
+    taxMode,
+  }), [bulkGetLastSoldPrices, pricingStrategy, selectedBranch, taxMode])
 }

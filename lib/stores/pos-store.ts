@@ -93,16 +93,40 @@ interface POSState {
   selectedBranch: { id: string; name: string } | null
   invoiceMode: 'draft' | 'sent'
   printerSettings: PrinterSettings
+  pricingStrategy: 'default' | 'lastsold'
   setTaxMode: (mode: 'inclusive' | 'exclusive') => void
   setSelectedBranch: (branch: { id: string; name: string } | null) => void
   setInvoiceMode: (mode: 'draft' | 'sent') => void
   setPrinterSettings: (settings: Partial<PrinterSettings>) => void
+  setPricingStrategy: (strategy: 'default' | 'lastsold') => void
 
   // UI State
   loading: boolean
   setLoading: (loading: boolean) => void
   syncStatus: string
   setSyncStatus: (status: string) => void
+
+  // LastSold Pricing
+  saveLastSoldPrice: (params: {
+    itemId: string
+    unit: string
+    branchId: string
+    taxMode: 'inclusive' | 'exclusive'
+    price: number
+    itemName?: string
+    branchName?: string
+  }) => Promise<void>
+  getLastSoldPrice: (params: {
+    itemId: string
+    unit: string
+    branchId: string
+    taxMode: 'inclusive' | 'exclusive'
+  }) => Promise<{ found: boolean; price?: number; timestamp?: string }>
+  bulkGetLastSoldPrices: (params: {
+    items: Array<{ itemId: string; unit: string }>
+    branchId: string
+    taxMode: 'inclusive' | 'exclusive'
+  }) => Promise<Record<string, { price: number; timestamp: string }>>
 }
 
 export const usePOSStore = create<POSState>()((set, get) => ({
@@ -262,6 +286,21 @@ export const usePOSStore = create<POSState>()((set, get) => ({
           originalPrice: originalPrice,
         }]
       })
+
+      // Save LastSold price if it's a custom price and strategy is enabled
+      if (customPrice && state.selectedBranch?.id && state.pricingStrategy === 'lastsold') {
+        get().saveLastSoldPrice({
+          itemId: product.id,
+          unit,
+          branchId: state.selectedBranch.id,
+          taxMode: state.taxMode,
+          price: finalPrice,
+          itemName: product.name,
+          branchName: state.selectedBranch.name
+        }).catch(error => {
+          console.error('Failed to save LastSold price:', error)
+        })
+      }
     }
   },
 
@@ -288,6 +327,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
   selectedBranch: null,
   invoiceMode: 'sent',
   printerSettings: getPrinterSettings(),
+  pricingStrategy: (typeof window !== 'undefined' && localStorage.getItem('pricingStrategy') as 'default' | 'lastsold') || 'default',
   setTaxMode: (mode) => set({ taxMode: mode }),
   setSelectedBranch: (branch) => set({ selectedBranch: branch }),
   setInvoiceMode: (mode) => set({ invoiceMode: mode }),
@@ -297,10 +337,91 @@ export const usePOSStore = create<POSState>()((set, get) => ({
     set({ printerSettings: updated })
     savePrinterSettings(settings)
   },
+  setPricingStrategy: (strategy) => {
+    set({ pricingStrategy: strategy })
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pricingStrategy', strategy)
+    }
+  },
 
   // UI State
   loading: false,
   setLoading: (loading) => set({ loading }),
   syncStatus: '',
   setSyncStatus: (status) => set({ syncStatus: status }),
+
+  // LastSold Pricing Methods
+  saveLastSoldPrice: async (params) => {
+    try {
+      const response = await fetch('/api/last-sold-prices/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      })
+
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save LastSold price')
+      }
+
+      console.log('LastSold price saved successfully:', data)
+    } catch (error) {
+      console.error('Error saving LastSold price:', error)
+      throw error
+    }
+  },
+
+  getLastSoldPrice: async (params) => {
+    try {
+      const { itemId, unit, branchId, taxMode } = params
+      const queryParams = new URLSearchParams({
+        itemId,
+        unit,
+        branchId,
+        taxMode,
+      })
+
+      const response = await fetch(`/api/last-sold-prices/get?${queryParams}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get LastSold price')
+      }
+
+      return {
+        found: data.found,
+        price: data.price,
+        timestamp: data.timestamp,
+      }
+    } catch (error) {
+      console.error('Error getting LastSold price:', error)
+      return { found: false }
+    }
+  },
+
+  bulkGetLastSoldPrices: async (params) => {
+    try {
+      const response = await fetch('/api/last-sold-prices/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get bulk LastSold prices')
+      }
+
+      return data.prices || {}
+    } catch (error) {
+      console.error('Error getting bulk LastSold prices:', error)
+      return {}
+    }
+  },
 }))

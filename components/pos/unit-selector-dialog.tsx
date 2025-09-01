@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Package, ChevronDown, ChevronUp, History, TrendingUp, TrendingDown, Calendar } from 'lucide-react'
-import { Product } from '@/lib/stores/pos-store'
+import { Package, ChevronDown, ChevronUp, History, TrendingUp, TrendingDown, Calendar, Clock } from 'lucide-react'
+import { Product, usePOSStore } from '@/lib/stores/pos-store'
 import { UOMHandler } from '@/lib/uom-handler'
 
 interface Transaction {
@@ -60,6 +60,14 @@ export function UnitSelectorDialog({
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
   
+  // LastSold pricing state
+  const [lastSoldPieces, setLastSoldPieces] = useState<{ price: number; timestamp: string } | null>(null)
+  const [lastSoldCartons, setLastSoldCartons] = useState<{ price: number; timestamp: string } | null>(null)
+  const [loadingLastSold, setLoadingLastSold] = useState(false)
+  
+  // Get store values
+  const { selectedBranch, getLastSoldPrice, pricingStrategy } = usePOSStore()
+  
   const quantityRef = useRef<HTMLInputElement>(null)
   const piecePriceRef = useRef<HTMLInputElement>(null)
   const cartonPriceRef = useRef<HTMLInputElement>(null)
@@ -86,24 +94,95 @@ export function UnitSelectorDialog({
     }
   }
 
+  // Fetch LastSold prices
+  const fetchLastSoldPrices = async () => {
+    if (!product?.id || !selectedBranch?.id || pricingStrategy !== 'lastsold') return
+    
+    setLoadingLastSold(true)
+    
+    try {
+      // Fetch pieces price
+      const piecesResult = await getLastSoldPrice({
+        itemId: product.id,
+        unit: 'PCS',
+        branchId: selectedBranch.id,
+        taxMode: taxMode
+      })
+      
+      if (piecesResult.found && piecesResult.price && piecesResult.timestamp) {
+        setLastSoldPieces({
+          price: piecesResult.price,
+          timestamp: piecesResult.timestamp
+        })
+      } else {
+        setLastSoldPieces(null)
+      }
+      
+      // Fetch carton price if applicable
+      if (product.hasConversion && product.piecesPerCarton && product.piecesPerCarton > 1) {
+        const cartonUnit = product.storedUnit || 'CTN'
+        const cartonResult = await getLastSoldPrice({
+          itemId: product.id,
+          unit: cartonUnit,
+          branchId: selectedBranch.id,
+          taxMode: taxMode
+        })
+        
+        if (cartonResult.found && cartonResult.price && cartonResult.timestamp) {
+          setLastSoldCartons({
+            price: cartonResult.price,
+            timestamp: cartonResult.timestamp
+          })
+        } else {
+          setLastSoldCartons(null)
+        }
+      } else {
+        setLastSoldCartons(null)
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch LastSold prices:', error)
+    } finally {
+      setLoadingLastSold(false)
+    }
+  }
+
   // Initialize prices when dialog opens
   useEffect(() => {
     if (open && product) {
-      const basePiecePrice = product.piecePrice || product.price
-      const baseCartonPrice = product.cartonPrice || (product.piecesPerCarton ? basePiecePrice * product.piecesPerCarton : basePiecePrice)
+      // First fetch LastSold prices
+      fetchLastSoldPrices()
       
-      // Apply tax adjustment if needed
-      const adjustedPiecePrice = taxMode === 'inclusive' ? basePiecePrice * 1.15 : basePiecePrice
-      const adjustedCartonPrice = taxMode === 'inclusive' ? baseCartonPrice * 1.15 : baseCartonPrice
-      
-      setPiecePriceInput(adjustedPiecePrice.toFixed(2))
-      setCartonPriceInput(adjustedCartonPrice.toFixed(2))
+      // Set initial state
       setSelectedUnit('pieces')
       setQuantityInput('1')
       setActiveMainTab('addToCart')
       setActiveHistoryTab('sales')
+    } else if (!open) {
+      // Clear LastSold data when dialog closes
+      setLastSoldPieces(null)
+      setLastSoldCartons(null)
+      setLoadingLastSold(false)
     }
-  }, [open, product, taxMode])
+  }, [open, product, taxMode, selectedBranch, pricingStrategy])
+
+  // Update price inputs when LastSold prices are loaded
+  useEffect(() => {
+    if (open && product && !loadingLastSold) {
+      // Use LastSold prices if strategy is enabled and available, otherwise fall back to default prices
+      const useLastSoldPricing = pricingStrategy === 'lastsold'
+      const basePiecePrice = (useLastSoldPricing && lastSoldPieces?.price) || product.piecePrice || product.price
+      const baseCartonPrice = (useLastSoldPricing && lastSoldCartons?.price) || product.cartonPrice || (product.piecesPerCarton ? basePiecePrice * product.piecesPerCarton : basePiecePrice)
+      
+      // Only apply tax adjustment if LastSold price is not being used (since LastSold prices are already tax-adjusted)
+      const shouldApplyTaxAdjustment = !useLastSoldPricing || (!lastSoldPieces && !lastSoldCartons)
+      const adjustedPiecePrice = (useLastSoldPricing && lastSoldPieces?.price) || (shouldApplyTaxAdjustment && taxMode === 'inclusive' ? basePiecePrice * 1.15 : basePiecePrice)
+      const adjustedCartonPrice = (useLastSoldPricing && lastSoldCartons?.price) || (shouldApplyTaxAdjustment && taxMode === 'inclusive' ? baseCartonPrice * 1.15 : baseCartonPrice)
+      
+      setPiecePriceInput(adjustedPiecePrice.toFixed(2))
+      setCartonPriceInput(adjustedCartonPrice.toFixed(2))
+    }
+  }, [open, product, taxMode, lastSoldPieces, lastSoldCartons, loadingLastSold, pricingStrategy])
 
   // Handler for when History tab is selected
   const handleHistoryTabChange = (tab: string) => {
@@ -271,6 +350,43 @@ export function UnitSelectorDialog({
                 />
                 <span className="text-sm text-muted-foreground">SAR</span>
               </div>
+              
+              {/* LastSold Price Indicator */}
+              {pricingStrategy === 'lastsold' && !loadingLastSold && (
+                <div className="flex items-center gap-2">
+                  {selectedUnit === 'pieces' && lastSoldPieces && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Last sold: SAR {lastSoldPieces.price.toFixed(2)}
+                    </Badge>
+                  )}
+                  {selectedUnit === 'cartons' && lastSoldCartons && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Last sold: SAR {lastSoldCartons.price.toFixed(2)}
+                    </Badge>
+                  )}
+                  {selectedUnit === 'pieces' && !lastSoldPieces && (
+                    <span className="text-xs text-muted-foreground">No previous sale recorded</span>
+                  )}
+                  {selectedUnit === 'cartons' && !lastSoldCartons && (
+                    <span className="text-xs text-muted-foreground">No previous sale recorded</span>
+                  )}
+                </div>
+              )}
+              
+              {pricingStrategy === 'lastsold' && loadingLastSold && (
+                <div className="flex items-center gap-2">
+                  <div className="animate-pulse flex items-center">
+                    <div className="h-3 w-3 bg-gray-200 rounded-full mr-1"></div>
+                    <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              )}
+              
+              {pricingStrategy === 'default' && (
+                <span className="text-xs text-muted-foreground">Using default pricing strategy</span>
+              )}
             </div>
           </div>
 

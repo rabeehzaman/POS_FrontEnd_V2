@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Zap, User, Palette, Monitor, ShoppingBag, RefreshCw, AlertTriangle, CheckCircle, XCircle, Clock, Building2, Sun, Moon, SunMoon, Printer } from 'lucide-react'
+import { ArrowLeft, Zap, User, Palette, Monitor, ShoppingBag, RefreshCw, AlertTriangle, CheckCircle, XCircle, Clock, Building2, Sun, Moon, SunMoon, Printer, DollarSign, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,15 @@ export function SettingsPage() {
   const [refreshingAuth, setRefreshingAuth] = useState(false)
   const [testingPrinter, setTestingPrinter] = useState(false)
   
+  // LastSold Pricing state
+  const [lastSoldStats, setLastSoldStats] = useState<{
+    totalCount: number
+    branchStats: Record<string, { count: number; branchName: string }>
+    lastUpdated: string | null
+  } | null>(null)
+  const [loadingLastSoldStats, setLoadingLastSoldStats] = useState(false)
+  const [clearingPrices, setClearingPrices] = useState(false)
+  
   const { 
     authStatus, 
     taxMode, 
@@ -29,9 +38,11 @@ export function SettingsPage() {
     syncStatus,
     loading,
     printerSettings,
+    pricingStrategy,
     setTaxMode,
     setSelectedBranch,
     setPrinterSettings,
+    setPricingStrategy,
     refreshAuthStatus,
     logout,
     checkAuthStatus
@@ -69,7 +80,17 @@ export function SettingsPage() {
   useEffect(() => {
     setMounted(true)
     checkAuthStatus()
+    if (pricingStrategy === 'lastsold') {
+      loadLastSoldStats()
+    }
   }, [checkAuthStatus])
+
+  // Load stats when pricing strategy changes to LastSold
+  useEffect(() => {
+    if (pricingStrategy === 'lastsold') {
+      loadLastSoldStats()
+    }
+  }, [pricingStrategy])
 
   // Load branches if authenticated
   useEffect(() => {
@@ -127,6 +148,93 @@ export function SettingsPage() {
       toast.error('Test print failed. Please check your printer.')
     } finally {
       setTestingPrinter(false)
+    }
+  }
+
+  // LastSold Pricing functions
+  const loadLastSoldStats = async () => {
+    if (loadingLastSoldStats) return
+    
+    try {
+      setLoadingLastSoldStats(true)
+      const response = await fetch('/api/last-sold-prices/stats')
+      const data = await response.json()
+      
+      if (data.success) {
+        setLastSoldStats({
+          totalCount: data.totalCount,
+          branchStats: data.branchStats,
+          lastUpdated: data.lastUpdated
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load LastSold stats:', error)
+      toast.error('Failed to load pricing statistics')
+    } finally {
+      setLoadingLastSoldStats(false)
+    }
+  }
+
+  const handleClearAllPrices = async () => {
+    if (!confirm('Are you sure you want to clear ALL LastSold prices? This action cannot be undone.')) return
+    
+    try {
+      setClearingPrices(true)
+      const response = await fetch('/api/last-sold-prices/clear', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ confirm: true })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        toast.success('All LastSold prices cleared successfully')
+        setLastSoldStats({
+          totalCount: 0,
+          branchStats: {},
+          lastUpdated: null
+        })
+      } else {
+        toast.error(data.error || 'Failed to clear prices')
+      }
+    } catch (error) {
+      console.error('Failed to clear LastSold prices:', error)
+      toast.error('Failed to clear prices')
+    } finally {
+      setClearingPrices(false)
+    }
+  }
+
+  const handleClearBranchPrices = async (branchId: string, branchName: string) => {
+    if (!confirm(`Are you sure you want to clear LastSold prices for "${branchName}"? This action cannot be undone.`)) return
+    
+    try {
+      setClearingPrices(true)
+      const response = await fetch('/api/last-sold-prices/clear', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ branchId, confirm: true })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        toast.success(`Cleared ${data.deletedCount} prices for ${branchName}`)
+        // Reload stats
+        loadLastSoldStats()
+      } else {
+        toast.error(data.error || 'Failed to clear branch prices')
+      }
+    } catch (error) {
+      console.error('Failed to clear branch LastSold prices:', error)
+      toast.error('Failed to clear branch prices')
+    } finally {
+      setClearingPrices(false)
     }
   }
 
@@ -356,6 +464,76 @@ export function SettingsPage() {
             </div>
             
             <div className="space-y-4">
+              {/* Pricing Strategy */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    Pricing Strategy
+                  </CardTitle>
+                  <CardDescription>
+                    Choose how product prices are determined and suggested
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex gap-2">
+                      <Button
+                        variant={pricingStrategy === 'default' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setPricingStrategy('default')}
+                        className="flex-1"
+                      >
+                        Default Pricing
+                      </Button>
+                      <Button
+                        variant={pricingStrategy === 'lastsold' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setPricingStrategy('lastsold')}
+                        className="flex-1"
+                      >
+                        LastSold Pricing
+                      </Button>
+                    </div>
+                    
+                    {/* Strategy descriptions */}
+                    <div className="space-y-3 text-sm">
+                      <div className={`p-3 rounded-lg border ${
+                        pricingStrategy === 'default' ? 'bg-primary/5 border-primary' : 'bg-muted/30'
+                      }`}>
+                        <div className="font-medium mb-1">Default Pricing</div>
+                        <div className="text-xs text-muted-foreground">
+                          Uses product's base price from inventory. Tax adjustments applied based on tax mode.
+                        </div>
+                      </div>
+                      
+                      <div className={`p-3 rounded-lg border ${
+                        pricingStrategy === 'lastsold' ? 'bg-primary/5 border-primary' : 'bg-muted/30'
+                      }`}>
+                        <div className="font-medium mb-1">LastSold Pricing</div>
+                        <div className="text-xs text-muted-foreground">
+                          Remembers and suggests the last price used for each item, unit, branch, and tax mode combination. Falls back to default pricing when no history exists.
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Current strategy info */}
+                    <div className="pt-2 border-t">
+                      <div className="text-xs text-muted-foreground">
+                        Current strategy: <span className="font-medium">
+                          {pricingStrategy === 'default' ? 'Default Pricing' : 'LastSold Pricing'}
+                        </span>
+                      </div>
+                      {pricingStrategy === 'lastsold' && lastSoldStats && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {lastSoldStats.totalCount} saved prices available
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Tax Mode */}
               <Card>
                 <CardHeader>
@@ -748,6 +926,159 @@ export function SettingsPage() {
               </Card>
             </div>
           </section>
+
+          {/* LastSold Pricing - Only show when strategy is enabled */}
+          {pricingStrategy === 'lastsold' && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">LastSold Pricing Strategy</h2>
+            </div>
+            
+            <div className="space-y-4">
+              {/* LastSold Pricing Info */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Automatic Pricing Memory</CardTitle>
+                  <CardDescription>
+                    LastSold pricing automatically remembers and suggests the last price used for each item, unit, branch, and tax mode combination
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* How it works */}
+                  <Alert>
+                    <DollarSign className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>How it works:</strong> When you add an item to cart with a custom price, that price is automatically saved and will be suggested next time you select the same item with the same unit, branch, and tax mode.
+                    </AlertDescription>
+                  </Alert>
+
+                  {/* Statistics */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-semibold">
+                        {loadingLastSoldStats ? '...' : lastSoldStats?.totalCount || 0}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Total Saved Prices</div>
+                    </div>
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-semibold">
+                        {loadingLastSoldStats ? '...' : Object.keys(lastSoldStats?.branchStats || {}).length}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Branches with Prices</div>
+                    </div>
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-semibold">
+                        {loadingLastSoldStats ? '...' : lastSoldStats?.lastUpdated 
+                          ? new Date(lastSoldStats.lastUpdated).toLocaleDateString()
+                          : 'Never'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Last Updated</div>
+                    </div>
+                  </div>
+
+                  {/* Branch-wise breakdown */}
+                  {lastSoldStats && Object.keys(lastSoldStats.branchStats).length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Prices by Branch:</div>
+                      <div className="space-y-2">
+                        {Object.entries(lastSoldStats.branchStats).map(([branchId, stats]) => (
+                          <div key={branchId} className="flex items-center justify-between p-2 bg-muted/20 rounded">
+                            <div>
+                              <div className="text-sm font-medium">{stats.branchName}</div>
+                              <div className="text-xs text-muted-foreground">{stats.count} saved prices</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={clearingPrices}
+                              onClick={() => handleClearBranchPrices(branchId, stats.branchName)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No prices message */}
+                  {lastSoldStats && lastSoldStats.totalCount === 0 && !loadingLastSoldStats && (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <DollarSign className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="font-medium mb-1">No saved prices yet</p>
+                      <p className="text-sm">Start using custom prices to build your pricing memory</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Management Actions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pricing Data Management</CardTitle>
+                  <CardDescription>
+                    Manage your saved pricing data
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Refresh statistics</div>
+                      <div className="text-xs text-muted-foreground">
+                        Update the pricing statistics display
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      disabled={loadingLastSoldStats}
+                      onClick={loadLastSoldStats}
+                    >
+                      {loadingLastSoldStats ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Refresh
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium text-destructive">Clear all saved prices</div>
+                      <div className="text-xs text-muted-foreground">
+                        Permanently delete all LastSold pricing data
+                      </div>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      disabled={clearingPrices || !lastSoldStats || lastSoldStats.totalCount === 0}
+                      onClick={handleClearAllPrices}
+                    >
+                      {clearingPrices ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Clearing...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Clear All
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+          )}
 
           {/* Keyboard Shortcuts */}
           <section>
