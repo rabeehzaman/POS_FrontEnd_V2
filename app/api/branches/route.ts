@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// For static export compatibility (mobile builds)
+export const dynamic = 'force-static'
+export const revalidate = false
+
 export async function GET(request: NextRequest) {
   console.log('\n========== FETCHING BRANCHES (PROXY) ==========')
 

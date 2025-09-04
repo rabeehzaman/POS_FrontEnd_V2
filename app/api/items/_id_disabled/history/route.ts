@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+// For static export compatibility (mobile builds) - dynamic route needs force-dynamic
+// export const dynamic = 'force-dynamic' // Commented out for mobile builds
+export const revalidate = false
+
+// Required for static export
+export async function generateStaticParams() {
+  return [] // Return empty array since we won't pre-generate these routes
+}
+
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'

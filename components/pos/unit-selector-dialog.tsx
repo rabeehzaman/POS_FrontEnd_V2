@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Package, ChevronDown, ChevronUp, History, TrendingUp, TrendingDown, Calendar, Clock } from 'lucide-react'
+import { Package, ChevronDown, ChevronUp, History, TrendingUp, TrendingDown, Calendar, Clock, Plus, Minus } from 'lucide-react'
 import { Product, usePOSStore } from '@/lib/stores/pos-store'
 import { UOMHandler } from '@/lib/uom-handler'
+import { apiClient } from '@/lib/utils/api-client'
+import { useMobile } from '@/hooks/use-mobile'
 
 interface Transaction {
   date: string
@@ -68,6 +70,9 @@ export function UnitSelectorDialog({
   // Get store values
   const { selectedBranch, getLastSoldPrice, pricingStrategy } = usePOSStore()
   
+  // Mobile detection
+  const { shouldUseMobileLayout, isMobile, posHaptics } = useMobile()
+  
   const quantityRef = useRef<HTMLInputElement>(null)
   const piecePriceRef = useRef<HTMLInputElement>(null)
   const cartonPriceRef = useRef<HTMLInputElement>(null)
@@ -80,7 +85,7 @@ export function UnitSelectorDialog({
     setHistoryError(null)
     
     try {
-      const response = await fetch(`/api/items/${product.id}/history`)
+      const response = await apiClient.getItemHistory(product.id)
       if (!response.ok) {
         throw new Error('Failed to fetch history')
       }
@@ -229,7 +234,42 @@ export function UnitSelectorDialog({
     const unit = selectedUnit === 'pieces' ? 'PCS' : (product.storedUnit || 'CTN')
     
     if (!isNaN(customPrice) && customPrice > 0 && quantity > 0) {
+      // Add haptic feedback on mobile
+      if (shouldUseMobileLayout) {
+        posHaptics.addToCart()
+      }
       onAddToCart(product, quantity, unit, customPrice)
+      onClose()
+    }
+  }
+
+  // Mobile quantity controls
+  const incrementQuantity = () => {
+    const currentQty = parseInt(quantityInput) || 1
+    setQuantityInput((currentQty + 1).toString())
+    if (shouldUseMobileLayout) {
+      posHaptics.buttonPress()
+    }
+  }
+
+  const decrementQuantity = () => {
+    const currentQty = parseInt(quantityInput) || 1
+    if (currentQty > 1) {
+      setQuantityInput((currentQty - 1).toString())
+      if (shouldUseMobileLayout) {
+        posHaptics.buttonPress()
+      }
+    }
+  }
+
+  // Quick add 1 piece
+  const handleQuickAdd = () => {
+    const piecePrice = parseFloat(piecePriceInput)
+    if (!isNaN(piecePrice) && piecePrice > 0) {
+      if (shouldUseMobileLayout) {
+        posHaptics.addToCart()
+      }
+      onAddToCart(product, 1, 'PCS', piecePrice)
       onClose()
     }
   }
@@ -286,11 +326,15 @@ export function UnitSelectorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md h-[600px] flex flex-col">
-        <DialogHeader>
+      <DialogContent className={`sm:max-w-md flex flex-col ${
+        shouldUseMobileLayout 
+          ? 'h-[85vh] max-h-[600px] w-[95vw] rounded-t-xl' 
+          : 'h-[600px]'
+      }`}>
+        <DialogHeader className={shouldUseMobileLayout ? 'pb-2' : ''}>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Select Unit & Price
+            {shouldUseMobileLayout ? 'Add to Cart' : 'Select Unit & Price'}
           </DialogTitle>
         </DialogHeader>
 
@@ -313,8 +357,15 @@ export function UnitSelectorDialog({
             <div className="flex gap-2">
               <Button
                 variant={selectedUnit === 'pieces' ? 'default' : 'outline'}
-                onClick={() => setSelectedUnit('pieces')}
-                className="flex-1 h-auto p-3 flex flex-col items-start gap-1"
+                onClick={() => {
+                  setSelectedUnit('pieces')
+                  if (shouldUseMobileLayout) {
+                    posHaptics.buttonPress()
+                  }
+                }}
+                className={`flex-1 flex flex-col items-start gap-1 ${
+                  shouldUseMobileLayout ? 'h-16 p-4' : 'h-auto p-3'
+                }`}
               >
                 <span className="font-medium">Pieces</span>
                 <span className="text-xs opacity-80">Individual units</span>
@@ -323,8 +374,15 @@ export function UnitSelectorDialog({
               {hasUnitConversion && (
                 <Button
                   variant={selectedUnit === 'cartons' ? 'default' : 'outline'}
-                  onClick={() => setSelectedUnit('cartons')}
-                  className="flex-1 h-auto p-3 flex flex-col items-start gap-1"
+                  onClick={() => {
+                    setSelectedUnit('cartons')
+                    if (shouldUseMobileLayout) {
+                      posHaptics.buttonPress()
+                    }
+                  }}
+                  className={`flex-1 flex flex-col items-start gap-1 ${
+                    shouldUseMobileLayout ? 'h-16 p-4' : 'h-auto p-3'
+                  }`}
                 >
                   <span className="font-medium">Carton</span>
                   <span className="text-xs opacity-80">
@@ -402,15 +460,49 @@ export function UnitSelectorDialog({
           {/* Quantity Input */}
           <div className="space-y-2">
             <div className="text-sm font-medium">Quantity</div>
-            <Input
-              ref={quantityRef}
-              value={quantityInput}
-              onChange={(e) => handleQuantityChange(e.target.value)}
-              onClick={() => handlePriceInputClick(quantityRef)}
-              className="text-center"
-              placeholder="1"
-              min="1"
-            />
+            {shouldUseMobileLayout ? (
+              // Mobile: Increment/decrement buttons
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={decrementQuantity}
+                  disabled={parseInt(quantityInput) <= 1}
+                  className="h-12 w-12 rounded-full"
+                >
+                  <Minus className="h-5 w-5" />
+                </Button>
+                <div className="flex-1 max-w-24">
+                  <Input
+                    ref={quantityRef}
+                    value={quantityInput}
+                    onChange={(e) => handleQuantityChange(e.target.value)}
+                    className="text-center text-lg font-semibold h-12"
+                    placeholder="1"
+                    min="1"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={incrementQuantity}
+                  className="h-12 w-12 rounded-full"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
+            ) : (
+              // Desktop: Regular input
+              <Input
+                ref={quantityRef}
+                value={quantityInput}
+                onChange={(e) => handleQuantityChange(e.target.value)}
+                onClick={() => handlePriceInputClick(quantityRef)}
+                className="text-center"
+                placeholder="1"
+                min="1"
+              />
+            )}
           </div>
 
           {/* Total Summary */}
@@ -481,22 +573,61 @@ export function UnitSelectorDialog({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleAddToCart}
-            disabled={
-              !quantityInput ||
-              !(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput) ||
-              isNaN(parseFloat(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput)) ||
-              isNaN(parseInt(quantityInput)) ||
-              parseInt(quantityInput) <= 0
-            }
-          >
-            Add to Cart
-          </Button>
+        <DialogFooter className={`gap-2 ${shouldUseMobileLayout ? 'flex-col space-y-2' : ''}`}>
+          {shouldUseMobileLayout ? (
+            // Mobile: Quick add button + regular controls
+            <>
+              <Button 
+                onClick={handleQuickAdd}
+                variant="secondary"
+                disabled={!piecePriceInput || isNaN(parseFloat(piecePriceInput))}
+                className="w-full h-12 text-base font-semibold"
+              >
+                Quick Add 1 PCS - {piecePriceInput ? `${parseFloat(piecePriceInput).toFixed(2)} SAR` : '0.00 SAR'}
+              </Button>
+              <div className="flex gap-2 w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={onClose}
+                  className="flex-1 h-12 text-base"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleAddToCart}
+                  disabled={
+                    !quantityInput ||
+                    !(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput) ||
+                    isNaN(parseFloat(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput)) ||
+                    isNaN(parseInt(quantityInput)) ||
+                    parseInt(quantityInput) <= 0
+                  }
+                  className="flex-2 h-12 text-base font-semibold"
+                >
+                  Add {quantityInput} {selectedUnit === 'pieces' ? 'PCS' : 'CTN'} to Cart
+                </Button>
+              </div>
+            </>
+          ) : (
+            // Desktop: Regular layout
+            <>
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleAddToCart}
+                disabled={
+                  !quantityInput ||
+                  !(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput) ||
+                  isNaN(parseFloat(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput)) ||
+                  isNaN(parseInt(quantityInput)) ||
+                  parseInt(quantityInput) <= 0
+                }
+              >
+                Add to Cart
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

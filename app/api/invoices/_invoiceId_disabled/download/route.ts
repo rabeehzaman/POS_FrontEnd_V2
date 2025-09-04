@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// For static export compatibility (mobile builds) - dynamic route needs force-dynamic
+// export const dynamic = 'force-dynamic' // Commented out for mobile builds
+export const revalidate = false
+
+// Required for static export
+export async function generateStaticParams() {
+  return [] // Return empty array since we won't pre-generate these routes
+}
+
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ invoiceId: string }> }

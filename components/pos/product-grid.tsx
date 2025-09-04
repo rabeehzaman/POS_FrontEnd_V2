@@ -5,11 +5,13 @@ import { FixedSizeGrid as Grid } from 'react-window'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Package, AlertTriangle } from 'lucide-react'
+import { Package, AlertTriangle, Plus, ShoppingCart } from 'lucide-react'
 import { Product } from '@/lib/stores/pos-store'
 import { UnitSelectorDialog } from './unit-selector-dialog'
 import { useDebouncedProductSearch } from '@/lib/hooks/use-debounced-search'
 import { useSettings } from '@/lib/hooks/use-shallow-store'
+import { useMobile, useTouchGestures } from '@/hooks/use-mobile'
+import { toast } from 'sonner'
 
 interface ProductGridProps {
   products: Product[]
@@ -30,6 +32,9 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const { taxMode, pricingStrategy, selectedBranch } = useSettings()
+  
+  // Mobile capabilities
+  const { isMobile, isTablet, isTouch, shouldUseMobileLayout, posHaptics } = useMobile()
 
   // Get unique categories
   const categories = useMemo(() => {
@@ -70,30 +75,40 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
     return baseProducts.filter(product => product.group_name === selectedCategory)
   }, [products, searchResults, searchQuery, selectedCategory, hasSearchIndex])
 
-  // Calculate grid dimensions based on container width
+  // Calculate grid dimensions based on container width with mobile optimization
   const gridConfig = useMemo(() => {
     const containerWidth = containerDimensions.width
-    if (containerWidth === 0) return { columnCount: 2, columnWidth: 200, itemHeight: 200 }
+    if (containerWidth === 0) return { columnCount: 2, columnWidth: 200, itemHeight: 220 }
     
-    // Responsive breakpoints matching Tailwind CSS
+    // Mobile-optimized responsive breakpoints
     let columnCount = 2 // Default for mobile
-    if (containerWidth >= 1536) columnCount = 8 // 2xl
-    else if (containerWidth >= 1280) columnCount = 6 // xl
-    else if (containerWidth >= 1024) columnCount = 5 // lg
-    else if (containerWidth >= 768) columnCount = 4 // md
-    else if (containerWidth >= 640) columnCount = 3 // sm
+    let itemHeight = 220 // Taller for better touch targets
     
-    const gap = 24 // 6 * 4 (gap-6 in Tailwind)
-    const padding = 48 // 12 * 4 (px-6 py-8)
+    if (shouldUseMobileLayout) {
+      // Mobile/tablet portrait: prioritize larger touch targets
+      columnCount = containerWidth >= 500 ? 2 : 2 // Keep 2 columns on mobile
+      itemHeight = 240 // Larger touch targets for mobile
+    } else {
+      // Desktop breakpoints
+      if (containerWidth >= 1536) columnCount = 8 // 2xl
+      else if (containerWidth >= 1280) columnCount = 6 // xl
+      else if (containerWidth >= 1024) columnCount = 5 // lg
+      else if (containerWidth >= 768) columnCount = 4 // md
+      else if (containerWidth >= 640) columnCount = 3 // sm
+      itemHeight = 180 // Compact for desktop
+    }
+    
+    const gap = shouldUseMobileLayout ? 16 : 24 // Smaller gap on mobile
+    const padding = shouldUseMobileLayout ? 32 : 48 // Less padding on mobile
     const availableWidth = containerWidth - padding - (gap * (columnCount - 1))
     const columnWidth = Math.floor(availableWidth / columnCount)
     
     return {
       columnCount,
-      columnWidth: Math.max(columnWidth, 150), // Minimum width
-      itemHeight: 180, // Optimized height for compact layout
+      columnWidth: Math.max(columnWidth, shouldUseMobileLayout ? 140 : 150), // Minimum width
+      itemHeight,
     }
-  }, [containerDimensions.width])
+  }, [containerDimensions.width, shouldUseMobileLayout])
 
   // Calculate row count
   const rowCount = Math.ceil(filteredProducts.length / gridConfig.columnCount)
@@ -117,16 +132,24 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
       {/* Category Tabs */}
       <div className="border-b border-border/30 bg-background/50 backdrop-blur-sm">
         <div className="container px-4 py-3">
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+          <div className={`flex items-center ${shouldUseMobileLayout ? 'gap-2' : 'gap-1'} overflow-x-auto scrollbar-hide`}>
             {categories.map(category => (
               <button
                 key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 whitespace-nowrap ${
+                onClick={() => {
+                  setSelectedCategory(category)
+                  if (shouldUseMobileLayout) {
+                    posHaptics.buttonPress()
+                  }
+                }}
+                className={`${
+                  shouldUseMobileLayout ? 'px-4 py-3 min-h-[44px]' : 'px-4 py-2'
+                } text-sm font-medium rounded-full transition-all duration-200 whitespace-nowrap active:scale-95 ${
                   selectedCategory === category
                     ? 'bg-foreground text-background shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                 }`}
+                style={shouldUseMobileLayout ? { touchAction: 'manipulation' } : undefined}
               >
                 {category}
               </button>
@@ -137,11 +160,15 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
 
       {/* Products Grid */}
       <div ref={containerRef} className="flex-1 overflow-auto">
-        <div className="h-full px-6 py-8">
+        <div className={`h-full ${shouldUseMobileLayout ? 'px-4 py-4' : 'px-6 py-8'}`}>
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6">
-              {Array.from({ length: 12 }).map((_, index) => (
-                <ProductCardSkeleton key={index} />
+            <div className={`grid gap-${shouldUseMobileLayout ? '4' : '6'} ${
+              shouldUseMobileLayout 
+                ? 'grid-cols-2'
+                : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8'
+            }`}>
+              {Array.from({ length: shouldUseMobileLayout ? 6 : 12 }).map((_, index) => (
+                <ProductCardSkeleton key={index} isMobile={shouldUseMobileLayout} />
               ))}
             </div>
           ) : filteredProducts.length === 0 ? (
@@ -181,6 +208,7 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
                 lastSoldPrices,
                 selectedBranch,
                 onAddToCart,
+                shouldUseMobileLayout,
               }}
             >
               {VirtualizedProductCard}
@@ -204,9 +232,13 @@ interface ProductCardProps {
 const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart }: ProductCardProps) {
   const [showUnitDialog, setShowUnitDialog] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
   
   const isLowStock = product.stock < 10
   const isOutOfStock = product.stock === 0
+  
+  // Mobile capabilities
+  const { shouldUseMobileLayout, posHaptics } = useMobile()
   
   // Check if product has unit conversion capabilities
   const hasUnitConversion = product.hasConversion && product.piecesPerCarton && product.piecesPerCarton > 1
@@ -255,32 +287,100 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
     onAddToCart(prod, quantity, unit, customPrice)
   }
 
+  // Quick add to cart (mobile swipe or double tap)
+  const handleQuickAddToCart = useCallback(() => {
+    if (isOutOfStock) return
+    
+    const defaultUnit = hasUnitConversion ? 'PCS' : 'PCS'
+    onAddToCart(product, 1, defaultUnit, displayPrice)
+    posHaptics.addToCart()
+    toast.success(`Added ${product.name} to cart`, {
+      duration: 2000,
+      position: shouldUseMobileLayout ? 'bottom-center' : 'top-right'
+    })
+    setShowQuickAdd(true)
+    setTimeout(() => setShowQuickAdd(false), 1000)
+  }, [isOutOfStock, hasUnitConversion, onAddToCart, product, displayPrice, posHaptics, shouldUseMobileLayout])
+
+  // Touch gesture handlers for mobile - Always show unit dialog in portrait mode
+  const touchGestureRef = useTouchGestures({
+    onTap: () => {
+      if (isOutOfStock) return
+      posHaptics.buttonPress()
+      setShowUnitDialog(true)
+    },
+    onLongPress: () => {
+      if (isOutOfStock) return
+      posHaptics.longPress()
+      setShowUnitDialog(true)
+    },
+    // Disable quick-add gestures on mobile portrait to prevent bypassing unit dialog
+    // These gestures were causing products to be added directly to cart without qty/unit selection
+    onSwipeLeft: isMobile && !isTablet ? undefined : () => {
+      if (isOutOfStock) return
+      handleQuickAddToCart()
+    },
+    onDoubleTap: isMobile && !isTablet ? undefined : () => {
+      if (isOutOfStock) return
+      handleQuickAddToCart()
+    }
+  })
+
   return (
     <>
       <Card 
-        className={`group cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/5 hover:scale-[1.02] border-border/40 select-none h-full ${
+        ref={shouldUseMobileLayout ? touchGestureRef : undefined}
+        className={`group cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/5 hover:scale-[1.02] border-border/40 select-none h-full relative ${
           isOutOfStock ? 'opacity-40 cursor-not-allowed' : ''
         } ${
           isPressed ? 'scale-[0.95] shadow-inner' : ''
+        } ${
+          shouldUseMobileLayout ? 'min-h-[44px] active:scale-95' : ''
+        } ${
+          showQuickAdd ? 'ring-2 ring-green-500/50 bg-green-50/30' : ''
         }`}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onTouchStart={handleMouseDown}
-        onTouchEnd={handleMouseUp}
+        onMouseDown={!shouldUseMobileLayout ? handleMouseDown : undefined}
+        onMouseUp={!shouldUseMobileLayout ? handleMouseUp : undefined}
+        onMouseLeave={!shouldUseMobileLayout ? handleMouseLeave : undefined}
+        style={shouldUseMobileLayout ? { 
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation'
+        } : undefined}
       >
-      <CardContent className="p-3 flex flex-col h-full">
+      <CardContent className={`${shouldUseMobileLayout ? 'p-4' : 'p-3'} flex flex-col h-full relative`}>
+        {/* Mobile Quick Add Button */}
+        {shouldUseMobileLayout && !isOutOfStock && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleQuickAddToCart()
+            }}
+            className="absolute top-2 right-2 z-10 p-2 bg-primary text-primary-foreground rounded-full shadow-md opacity-90 active:opacity-100 transition-all duration-150 active:scale-95"
+            style={{ 
+              minHeight: '44px', 
+              minWidth: '44px',
+              touchAction: 'manipulation'
+            }}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
+
         {/* Product Header */}
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-sm leading-tight line-clamp-3 mb-1" title={product.name}>
+            <h3 className={`font-medium leading-tight line-clamp-3 mb-1 ${
+              shouldUseMobileLayout ? 'text-sm' : 'text-sm'
+            }`} title={product.name}>
               {product.name}
             </h3>
           </div>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <Badge 
               variant={isOutOfStock ? 'destructive' : isLowStock ? 'secondary' : 'outline'}
-              className="text-xs px-2 py-0.5 rounded-full font-medium border-0"
+              className={`text-xs px-2 py-0.5 rounded-full font-medium border-0 ${
+                shouldUseMobileLayout ? 'min-h-[20px]' : ''
+              }`}
             >
               {product.stock}
             </Badge>
@@ -296,7 +396,9 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
         {/* Price - Fixed at bottom */}
         <div className="text-center py-0.5 mt-auto">
           <div className="flex items-center justify-center gap-1 mb-1">
-            <div className="text-lg font-semibold tracking-tight">
+            <div className={`font-semibold tracking-tight ${
+              shouldUseMobileLayout ? 'text-base' : 'text-lg'
+            }`}>
               {displayPrice.toFixed(2)}
             </div>
             {isLastSoldPrice && (
@@ -308,10 +410,28 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
           <div className="text-xs text-muted-foreground/60">
             per unit {taxMode === 'inclusive' ? '(inc. tax)' : ''}
           </div>
+          
+          {/* Mobile gesture hints */}
+          {shouldUseMobileLayout && !isOutOfStock && (
+            <div className="text-[10px] text-muted-foreground/50 mt-1 leading-tight">
+              Tap to select • + button for quick add
+            </div>
+          )}
+          
           {/* Status indicator */}
           {isOutOfStock && (
             <div className="text-xs text-muted-foreground/80 font-medium mt-1">
               Out of Stock
+            </div>
+          )}
+          
+          {/* Quick add success indicator */}
+          {showQuickAdd && (
+            <div className="absolute inset-0 flex items-center justify-center bg-green-500/20 rounded-lg backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-green-700 font-medium text-sm">
+                <ShoppingCart className="h-4 w-4" />
+                <span>Added!</span>
+              </div>
             </div>
           )}
         </div>
@@ -343,6 +463,7 @@ interface VirtualizedProductCardProps {
     lastSoldPrices: Record<string, number>
     selectedBranch: { id: string; name: string } | null
     onAddToCart: (product: Product, quantity?: number, unit?: string, customPrice?: number) => void
+    shouldUseMobileLayout: boolean
   }
 }
 
@@ -352,7 +473,7 @@ const VirtualizedProductCard = React.memo<VirtualizedProductCardProps>(function 
   style, 
   data 
 }) {
-  const { products, columnCount, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart } = data
+  const { products, columnCount, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart, shouldUseMobileLayout } = data
   const productIndex = rowIndex * columnCount + columnIndex
   const product = products[productIndex]
 
@@ -360,8 +481,10 @@ const VirtualizedProductCard = React.memo<VirtualizedProductCardProps>(function 
     return <div style={style} />
   }
 
+  const padding = shouldUseMobileLayout ? 'p-2' : 'p-3'
+
   return (
-    <div style={style} className="p-3">
+    <div style={style} className={padding}>
       <ProductCard
         product={product}
         taxMode={taxMode}
@@ -374,25 +497,33 @@ const VirtualizedProductCard = React.memo<VirtualizedProductCardProps>(function 
   )
 })
 
-const ProductCardSkeleton = React.memo(function ProductCardSkeleton() {
+interface ProductCardSkeletonProps {
+  isMobile?: boolean
+}
+
+const ProductCardSkeleton = React.memo<ProductCardSkeletonProps>(function ProductCardSkeleton({ isMobile = false }) {
   return (
-    <Card className="group border-border/40">
-      <CardContent className="p-3">
+    <Card className={`group border-border/40 ${isMobile ? 'min-h-[200px]' : ''}`}>
+      <CardContent className="p-3 flex flex-col h-full">
         {/* Product Header */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
-            <Skeleton className="h-4 w-full mb-1" />
-            <Skeleton className="h-4 w-4/5 mb-1" />
-            <Skeleton className="h-4 w-3/4 mb-2" />
-            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className={`w-full mb-1 ${isMobile ? 'h-3' : 'h-4'}`} />
+            <Skeleton className={`w-4/5 mb-1 ${isMobile ? 'h-3' : 'h-4'}`} />
+            <Skeleton className={`w-3/4 mb-2 ${isMobile ? 'h-3' : 'h-4'}`} />
+            {!isMobile && <Skeleton className="h-3 w-1/2" />}
           </div>
           <Skeleton className="h-6 w-10 rounded-full flex-shrink-0" />
         </div>
 
+        {/* Spacer for mobile */}
+        {isMobile && <div className="flex-1"></div>}
+
         {/* Price */}
-        <div className="text-center mt-6">
-          <Skeleton className="h-6 w-16 mx-auto mb-1" />
+        <div className={`text-center ${isMobile ? 'mt-auto' : 'mt-6'}`}>
+          <Skeleton className={`mx-auto mb-1 ${isMobile ? 'h-5 w-14' : 'h-6 w-16'}`} />
           <Skeleton className="h-3 w-12 mx-auto" />
+          {isMobile && <Skeleton className="h-2 w-20 mx-auto mt-1" />}
         </div>
       </CardContent>
     </Card>

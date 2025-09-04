@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { PrinterSettings, getPrinterSettings, savePrinterSettings } from '@/lib/utils/printer'
+import { apiClient } from '@/lib/utils/api-client'
 
 export interface Product {
   id: string
@@ -137,7 +138,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
   // Check authentication status from API
   checkAuthStatus: async () => {
     try {
-      const response = await fetch('/api/auth/status')
+      const response = await apiClient.getAuthStatus()
       const authData = await response.json()
       
       if (response.ok) {
@@ -189,9 +190,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
     try {
       set({ loading: true, syncStatus: 'Logging out...' })
       
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST'
-      })
+      const response = await apiClient.logout()
       
       if (response.ok) {
         set({ 
@@ -353,13 +352,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
   // LastSold Pricing Methods
   saveLastSoldPrice: async (params) => {
     try {
-      const response = await fetch('/api/last-sold-prices/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      })
+      const response = await apiClient.saveLastSoldPrice(params)
 
       const data = await response.json()
       
@@ -376,15 +369,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
 
   getLastSoldPrice: async (params) => {
     try {
-      const { itemId, unit, branchId, taxMode } = params
-      const queryParams = new URLSearchParams({
-        itemId,
-        unit,
-        branchId,
-        taxMode,
-      })
-
-      const response = await fetch(`/api/last-sold-prices/get?${queryParams}`)
+      const response = await apiClient.getLastSoldPrices(params)
       const data = await response.json()
 
       if (!response.ok) {
@@ -404,13 +389,7 @@ export const usePOSStore = create<POSState>()((set, get) => ({
 
   bulkGetLastSoldPrices: async (params) => {
     try {
-      const response = await fetch('/api/last-sold-prices/bulk', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      })
+      const response = await apiClient.bulkGetLastSoldPrices(params)
 
       const data = await response.json()
 

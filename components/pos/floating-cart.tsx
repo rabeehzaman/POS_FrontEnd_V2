@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { usePOSStore } from '@/lib/stores/pos-store'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/utils/api-client'
 
 const TAX_RATE = 0.15 // 15% VAT
 
@@ -86,11 +87,7 @@ export function FloatingCart() {
         ...templateData
       }
 
-      const response = await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoiceData)
-      })
+      const response = await apiClient.createInvoice(invoiceData)
 
       const result = await response.json()
 

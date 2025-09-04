@@ -1,9 +1,15 @@
 import type { NextConfig } from "next";
 import withPWA from '@ducanh2912/next-pwa';
 
+// Check if building for mobile (Capacitor)
+const isMobileBuild = process.env.CAPACITOR_BUILD === 'true';
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  // Use export for Capacitor builds, standalone for web
+  output: isMobileBuild ? 'export' : 'standalone',
+  // Add trailing slash for better mobile routing
+  trailingSlash: isMobileBuild,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -17,10 +23,22 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'],
+    // Disable image optimization for static export
+    unoptimized: isMobileBuild,
   },
   env: {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    NEXT_PUBLIC_IS_MOBILE: isMobileBuild ? 'true' : 'false',
   },
+  // Mobile-specific optimizations
+  ...(isMobileBuild && {
+    basePath: '',
+    distDir: 'out',
+    // Exclude dynamic API routes from static export
+    generateBuildId: async () => {
+      return 'mobile-build'
+    },
+  }),
 };
 
 const PWAConfig = withPWA({

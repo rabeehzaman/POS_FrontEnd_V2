@@ -1,4 +1,19 @@
 import { toast } from 'sonner'
+import { Capacitor } from '@capacitor/core'
+
+// Mobile printing service - lazy import to avoid issues on web
+let mobilePrintingService: any = null
+async function getMobilePrintingService() {
+  if (!mobilePrintingService && Capacitor.isNativePlatform()) {
+    try {
+      const { MobilePrintingService } = await import('@/lib/services/mobile-printing')
+      mobilePrintingService = MobilePrintingService.getInstance()
+    } catch (error) {
+      console.error('Failed to load mobile printing service:', error)
+    }
+  }
+  return mobilePrintingService
+}
 
 // Type definition for print-js since @types/print-js doesn't exist
 declare const printJS: {
@@ -30,6 +45,10 @@ export interface PrinterSettings {
   numberOfCopies: number
   printAfterInvoice: boolean
   testPrintEnabled: boolean
+  // Mobile-specific settings
+  preferMobilePrinting: boolean
+  fallbackToWeb: boolean
+  mobileAutoReconnect: boolean
 }
 
 export interface PrintOptions {
@@ -44,11 +63,40 @@ const DEFAULT_PRINTER_SETTINGS: PrinterSettings = {
   silentPrint: true,
   numberOfCopies: 1,
   printAfterInvoice: false,
-  testPrintEnabled: true
+  testPrintEnabled: true,
+  // Mobile-specific defaults
+  preferMobilePrinting: true,
+  fallbackToWeb: true,
+  mobileAutoReconnect: true
 }
 
 // Storage key for printer settings
 const PRINTER_SETTINGS_KEY = 'tmr_pos_printer_settings'
+
+/**
+ * Check if we're running on a native mobile platform
+ */
+export function isMobilePlatform(): boolean {
+  return Capacitor.isNativePlatform()
+}
+
+/**
+ * Check if mobile printing should be used based on settings and platform
+ */
+export function shouldUseMobilePrinting(): boolean {
+  if (!isMobilePlatform()) return false
+  
+  const settings = getPrinterSettings()
+  return settings.preferMobilePrinting
+}
+
+/**
+ * Check if we should fallback to web printing when mobile printing fails
+ */
+export function shouldFallbackToWeb(): boolean {
+  const settings = getPrinterSettings()
+  return settings.fallbackToWeb
+}
 
 /**
  * Get printer settings from localStorage
@@ -91,12 +139,79 @@ export function savePrinterSettings(settings: Partial<PrinterSettings>): void {
 }
 
 /**
- * Print a PDF blob using print-js
+ * Print a PDF blob using mobile or web printing
  * @param pdfBlob - The PDF blob to print
  * @param options - Print options
  * @returns Promise<boolean> - Success status
  */
 export async function printPDFBlob(
+  pdfBlob: Blob, 
+  options: PrintOptions = {}
+): Promise<boolean> {
+  // Try mobile printing first if available and preferred
+  if (shouldUseMobilePrinting()) {
+    try {
+      console.log('Attempting mobile printing for PDF blob')
+      return await printPDFBlobMobile(pdfBlob, options)
+    } catch (error) {
+      console.error('Mobile printing failed:', error)
+      
+      if (shouldFallbackToWeb()) {
+        console.log('Falling back to web printing')
+        toast.info('Mobile printer unavailable, using browser printing')
+      } else {
+        toast.error('Mobile printing failed')
+        return false
+      }
+    }
+  }
+  
+  // Use web printing (original implementation)
+  return printPDFBlobWeb(pdfBlob, options)
+}
+
+/**
+ * Print a PDF blob using mobile Bluetooth printing
+ * @param pdfBlob - The PDF blob to print
+ * @param options - Print options
+ * @returns Promise<boolean> - Success status
+ */
+async function printPDFBlobMobile(
+  pdfBlob: Blob, 
+  options: PrintOptions = {}
+): Promise<boolean> {
+  const mobilePrinter = await getMobilePrintingService()
+  
+  if (!mobilePrinter) {
+    throw new Error('Mobile printing service not available')
+  }
+
+  const settings = getPrinterSettings()
+  const copies = options.copies || settings.numberOfCopies
+  
+  try {
+    const jobId = await mobilePrinter.printInvoice(pdfBlob, {
+      copies,
+      showProgress: !options.silent,
+      retryOnFail: true,
+      priority: 'normal'
+    })
+    
+    console.log('Mobile print job queued:', jobId)
+    return true
+  } catch (error) {
+    console.error('Mobile print failed:', error)
+    throw error
+  }
+}
+
+/**
+ * Print a PDF blob using web printing (original implementation)
+ * @param pdfBlob - The PDF blob to print
+ * @param options - Print options
+ * @returns Promise<boolean> - Success status
+ */
+async function printPDFBlobWeb(
   pdfBlob: Blob, 
   options: PrintOptions = {}
 ): Promise<boolean> {
@@ -242,6 +357,59 @@ export async function printInvoice(
  * @returns Promise<boolean> - Success status
  */
 export async function printTestPage(): Promise<boolean> {
+  // Try mobile printing first if available and preferred
+  if (shouldUseMobilePrinting()) {
+    try {
+      console.log('Attempting mobile test print')
+      return await printTestPageMobile()
+    } catch (error) {
+      console.error('Mobile test print failed:', error)
+      
+      if (shouldFallbackToWeb()) {
+        console.log('Falling back to web test print')
+        toast.info('Mobile printer unavailable, using browser test print')
+      } else {
+        toast.error('Mobile test print failed')
+        return false
+      }
+    }
+  }
+
+  // Use web test printing (original implementation)
+  return printTestPageWeb()
+}
+
+/**
+ * Print a test page using mobile Bluetooth printing
+ * @returns Promise<boolean> - Success status
+ */
+async function printTestPageMobile(): Promise<boolean> {
+  const mobilePrinter = await getMobilePrintingService()
+  
+  if (!mobilePrinter) {
+    throw new Error('Mobile printing service not available')
+  }
+
+  try {
+    const jobId = await mobilePrinter.printTest({
+      showProgress: true,
+      retryOnFail: true,
+      priority: 'normal'
+    })
+    
+    console.log('Mobile test print job queued:', jobId)
+    return true
+  } catch (error) {
+    console.error('Mobile test print failed:', error)
+    throw error
+  }
+}
+
+/**
+ * Print a test page using web printing (original implementation)
+ * @returns Promise<boolean> - Success status
+ */
+async function printTestPageWeb(): Promise<boolean> {
   const toastId = toast.loading('Printing test page...')
 
   try {
@@ -363,6 +531,108 @@ export async function autoPrintInvoice(
       resolve(success)
     }, delay)
   })
+}
+
+/**
+ * Get mobile printer status
+ * @returns Promise<object | null> - Mobile printer status or null if not available
+ */
+export async function getMobilePrinterStatus(): Promise<any> {
+  if (!shouldUseMobilePrinting()) {
+    return null
+  }
+
+  try {
+    const mobilePrinter = await getMobilePrintingService()
+    return mobilePrinter ? mobilePrinter.getStatus() : null
+  } catch (error) {
+    console.error('Failed to get mobile printer status:', error)
+    return null
+  }
+}
+
+/**
+ * Check if mobile printer is connected
+ * @returns Promise<boolean> - True if mobile printer is connected
+ */
+export async function isMobilePrinterConnected(): Promise<boolean> {
+  const status = await getMobilePrinterStatus()
+  return status ? status.connected : false
+}
+
+/**
+ * Get available mobile printing options
+ * @returns Promise<object> - Available mobile printing capabilities
+ */
+export async function getMobilePrintingCapabilities(): Promise<{
+  available: boolean
+  connected: boolean
+  bluetoothEnabled: boolean
+  permissionsGranted: boolean
+}> {
+  if (!isMobilePlatform()) {
+    return {
+      available: false,
+      connected: false,
+      bluetoothEnabled: false,
+      permissionsGranted: false
+    }
+  }
+
+  try {
+    const mobilePrinter = await getMobilePrintingService()
+    
+    if (!mobilePrinter) {
+      return {
+        available: false,
+        connected: false,
+        bluetoothEnabled: false,
+        permissionsGranted: false
+      }
+    }
+
+    const requirements = await mobilePrinter.checkRequirements()
+    const status = mobilePrinter.getStatus()
+
+    return {
+      available: true,
+      connected: status.connected,
+      bluetoothEnabled: requirements.bluetooth,
+      permissionsGranted: requirements.permissions
+    }
+  } catch (error) {
+    console.error('Failed to check mobile printing capabilities:', error)
+    return {
+      available: false,
+      connected: false,
+      bluetoothEnabled: false,
+      permissionsGranted: false
+    }
+  }
+}
+
+/**
+ * Update mobile-specific printer settings
+ * @param mobileSettings - Mobile printer settings
+ */
+export function updateMobilePrinterSettings(mobileSettings: {
+  preferMobilePrinting?: boolean
+  fallbackToWeb?: boolean
+  mobileAutoReconnect?: boolean
+}): void {
+  const currentSettings = getPrinterSettings()
+  const updatedSettings = { ...currentSettings, ...mobileSettings }
+  savePrinterSettings(updatedSettings)
+  
+  // Apply auto-reconnect setting to mobile service if available
+  if (mobileSettings.mobileAutoReconnect !== undefined && isMobilePlatform()) {
+    getMobilePrintingService().then(mobilePrinter => {
+      if (mobilePrinter) {
+        // Note: This would need to be implemented in BluetoothManager
+        // mobilePrinter.setAutoReconnect(mobileSettings.mobileAutoReconnect)
+      }
+    }).catch(console.error)
+  }
 }
 
 /**

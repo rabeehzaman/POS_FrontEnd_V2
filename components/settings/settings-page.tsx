@@ -10,8 +10,10 @@ import { Switch } from '@/components/ui/switch'
 import { useTheme } from 'next-themes'
 import { usePOSStore } from '@/lib/stores/pos-store'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/utils/api-client'
 import { useEffect, useState } from 'react'
 import { printTestPage } from '@/lib/utils/printer'
+import { PrinterSetup } from './printer-setup'
 
 export function SettingsPage() {
   const router = useRouter()
@@ -53,7 +55,7 @@ export function SettingsPage() {
     
     try {
       setLoadingBranches(true)
-      const response = await fetch('/api/branches')
+      const response = await apiClient.getBranches()
       const data = await response.json()
       
       if (data.success) {
@@ -157,7 +159,7 @@ export function SettingsPage() {
     
     try {
       setLoadingLastSoldStats(true)
-      const response = await fetch('/api/last-sold-prices/stats')
+      const response = await apiClient.getLastSoldStats()
       const data = await response.json()
       
       if (data.success) {
@@ -180,13 +182,7 @@ export function SettingsPage() {
     
     try {
       setClearingPrices(true)
-      const response = await fetch('/api/last-sold-prices/clear', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ confirm: true })
-      })
+      const response = await apiClient.clearLastSoldPrices({ confirm: true })
       
       const data = await response.json()
       
@@ -213,13 +209,7 @@ export function SettingsPage() {
     
     try {
       setClearingPrices(true)
-      const response = await fetch('/api/last-sold-prices/clear', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ branchId, confirm: true })
-      })
+      const response = await apiClient.clearLastSoldPrices({ branchId, confirm: true })
       
       const data = await response.json()
       
@@ -868,12 +858,12 @@ export function SettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* Printer Setup */}
+              {/* Web Printer Setup */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Printer Setup</CardTitle>
+                  <CardTitle>Web Printer Setup</CardTitle>
                   <CardDescription>
-                    Test your printer and configure default settings
+                    Configure browser-based printing for desktop use
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -881,16 +871,16 @@ export function SettingsPage() {
                   <Alert>
                     <Monitor className="h-4 w-4" />
                     <AlertDescription>
-                      <strong>Windows Setup:</strong> Go to Settings → Printers & Scanners and set your POS printer as the default printer. Silent printing will use this default printer.
+                      <strong>Desktop Setup:</strong> Set your POS printer as the default printer in your system settings. Silent printing will use this default printer.
                     </AlertDescription>
                   </Alert>
 
                   {/* Test Print */}
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <div className="text-sm font-medium">Test printer</div>
+                      <div className="text-sm font-medium">Test web printer</div>
                       <div className="text-xs text-muted-foreground">
-                        Print a test page to verify printer connection
+                        Print a test page using browser printing
                       </div>
                     </div>
                     <Button 
@@ -924,6 +914,9 @@ export function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Mobile Bluetooth Printer Setup */}
+              <PrinterSetup />
             </div>
           </section>
 

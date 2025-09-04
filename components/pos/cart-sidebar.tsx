@@ -19,6 +19,7 @@ import {
   Download
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/utils/api-client'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { downloadInvoiceWithDelay, downloadInvoice, downloadAndPrintInvoice } from '@/lib/utils/invoice-download'
 import { 
@@ -30,6 +31,10 @@ import {
   useCustomerSelection, 
   useCartSummary 
 } from '@/lib/hooks/use-shallow-store'
+import { useMobile } from '@/hooks/use-mobile'
+import { BottomSheet, useBottomSheet } from '@/components/mobile/bottom-sheet'
+import { MobileCart } from '@/components/mobile/mobile-cart'
+import { useMobileCart } from '@/hooks/use-mobile-cart'
 
 const TAX_RATE = 0.15 // 15% VAT
 
@@ -47,6 +52,10 @@ export const CartSidebar = React.memo(function CartSidebar() {
   const cartScrollRef = useRef<HTMLDivElement>(null)
   const prevCartLength = useRef(0)
   
+  // Mobile state
+  const { shouldUseMobileLayout } = useMobile()
+  const { isOpen, open, close } = useMobileCart()
+  
   // Use optimized selectors to prevent infinite loops
   const cart = useCart()
   const { updateCartItem, removeFromCart, clearCart } = useCartActions()
@@ -56,16 +65,23 @@ export const CartSidebar = React.memo(function CartSidebar() {
   const { selectedCustomer, setSelectedCustomer } = useCustomerSelection()
   const { cartCount, subtotal, tax, total } = useCartSummary()
 
-  // Auto-scroll when new items are added
+  // Auto-scroll when new items are added (desktop only)
   useEffect(() => {
-    if (cart.length > prevCartLength.current && cartScrollRef.current) {
+    if (!shouldUseMobileLayout && cart.length > prevCartLength.current && cartScrollRef.current) {
       cartScrollRef.current.scrollTo({
         top: cartScrollRef.current.scrollHeight,
         behavior: 'smooth'
       })
     }
     prevCartLength.current = cart.length
-  }, [cart.length])
+  }, [cart.length, shouldUseMobileLayout])
+
+  // Auto-open mobile cart when items are added
+  useEffect(() => {
+    if (shouldUseMobileLayout && cart.length > 0 && cart.length > prevCartLength.current) {
+      open()
+    }
+  }, [cart.length, shouldUseMobileLayout, open])
 
   // Cart calculations now come from useCartSummary hook
 
@@ -160,11 +176,7 @@ export const CartSidebar = React.memo(function CartSidebar() {
         ...templateData
       }
 
-      const response = await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoiceData)
-      })
+      const response = await apiClient.createInvoice(invoiceData)
 
       const result = await response.json()
 
@@ -207,6 +219,26 @@ export const CartSidebar = React.memo(function CartSidebar() {
 
   const selectedCustomerData = customers.find(c => c.contact_id === selectedCustomer)
 
+  // Mobile version - render bottom sheet
+  if (shouldUseMobileLayout) {
+    return (
+      <>
+        {/* Mobile Cart Trigger - Hidden, cart opens automatically when items added */}
+        <BottomSheet
+          isOpen={isOpen}
+          onClose={close}
+          snapPoints={[0.3, 0.7, 0.95]}
+          initialSnap={1}
+          showHandle={true}
+          closeOnBackdrop={true}
+        >
+          <MobileCart onClose={close} />
+        </BottomSheet>
+      </>
+    )
+  }
+
+  // Desktop version - original sidebar
   return (
     <div className="w-[28rem] border-l border-border/40 bg-background/50 backdrop-blur-sm flex flex-col h-full">
       {/* Customer Search */}

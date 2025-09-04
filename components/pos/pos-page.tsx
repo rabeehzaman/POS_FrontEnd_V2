@@ -5,6 +5,7 @@ import { Header } from '@/components/header'
 import { ProductGrid } from '@/components/pos/product-grid'
 import { CartSidebar } from '@/components/pos/cart-sidebar'
 import { Spotlight } from '@/components/spotlight/spotlight'
+import { FloatingCartButton } from '@/components/mobile/floating-cart-button'
 import { Product, Customer } from '@/lib/stores/pos-store'
 import { useDebounce } from '@/lib/hooks/use-debounced-search'
 import { 
@@ -17,6 +18,7 @@ import {
   useLastSoldPricing
 } from '@/lib/hooks/use-shallow-store'
 import { toast } from 'sonner'
+import { apiClient } from '@/lib/utils/api-client'
 
 export function POSPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -92,15 +94,15 @@ export function POSPage() {
       if (products.length === 0) {
         setIsLoadingProducts(true)
         try {
-          // Fetch products
-          const productsResponse = await fetch('/api/items?limit=200')
+          // Fetch products using API client
+          const productsResponse = await apiClient.getItems(200)
           if (productsResponse.ok) {
             const productsData = await productsResponse.json()
             setProducts(productsData.items || [])
           }
 
-          // Fetch customers
-          const customersResponse = await fetch('/api/customers?limit=100')
+          // Fetch customers using API client
+          const customersResponse = await apiClient.getCustomers(100)
           if (customersResponse.ok) {
             const customersData = await customersResponse.json()
             setCustomers(customersData.customers || [])
@@ -195,6 +197,9 @@ export function POSPage() {
         onAction={handleSpotlightAction}
         onNavigate={handleSpotlightNavigate}
       />
+      
+      {/* Mobile-only floating cart button */}
+      <FloatingCartButton />
     </div>
   )
 }
