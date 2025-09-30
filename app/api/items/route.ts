@@ -9,7 +9,7 @@ export async function GET() {
     let allItems: any[] = []
     let page = 1
     let hasMore = true
-    const perPage = 200 // Zoho's max per page
+    const perPage = 1000 // Zoho supports up to 1000 items per page
 
     while (hasMore) {
       const data: any = await zoho.makeRequest('GET', '/items', undefined, {
