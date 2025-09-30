@@ -42,3 +42,8 @@ next-env.d.ts
 
 # MCP configuration (contains secrets)
 .mcp.json
+
+# Migration: Server-side data storage
+data/
+tokens.json
+lastSoldPrices.json

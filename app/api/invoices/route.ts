@@ -1,80 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-export async function GET(request: NextRequest) {
-  console.log('\n========== FETCHING INVOICES (PROXY) ==========')
-
-  try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    // Get query parameters from the request
-    const { searchParams } = new URL(request.url)
-    const queryString = searchParams.toString()
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/api/invoices${queryString ? '?' + queryString : ''}`)
-
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/invoices${queryString ? '?' + queryString : ''}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
-    }
-
-    console.log(`[PROXY] Successfully fetched ${data.invoices?.length || 0} invoices from backend`)
-
-    return NextResponse.json(data)
-
-  } catch (error) {
-    console.error('❌ Failed to proxy invoices GET request:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch invoices from backend' },
-      { status: 500 }
-    )
-  }
-}
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
 export async function POST(request: NextRequest) {
-  console.log('\n========== CREATING INVOICE (PROXY) ==========')
-
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    // Get the request body
     const body = await request.json()
-    
-    console.log(`[PROXY] Forwarding POST to backend: ${backendUrl}/api/invoices`)
 
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/invoices`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
-
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
+    const invoiceData = {
+      customer_id: body.customer_id,
+      line_items: body.line_items,
+      is_inclusive_tax: body.is_inclusive_tax || false,
     }
 
-    console.log(`[PROXY] Successfully created invoice: ${data.invoice?.invoice_number || 'Unknown'}`)
+    // Add branch if provided
+    if (body.branch_id) {
+      ;(invoiceData as any).branch_id = body.branch_id
+    }
 
-    return NextResponse.json(data)
+    // Add template if provided (for Main Branch)
+    if (body.template_id) {
+      ;(invoiceData as any).template_id = body.template_id
+      ;(invoiceData as any).template_name = body.template_name
+      ;(invoiceData as any).template_type = body.template_type
+    }
 
-  } catch (error) {
-    console.error('❌ Failed to proxy invoice POST request:', error)
+    const zoho = await getZohoClient()
+
+    // Create invoice
+    const createResponse = await zoho.makeRequest('POST', '/invoices', invoiceData)
+
+    // Mark as sent if requested
+    if (body.mark_as_sent) {
+      const invoiceId = (createResponse as any).invoice.invoice_id
+      await zoho.makeRequest('POST', `/invoices/${invoiceId}/status/sent`)
+    }
+
+    return NextResponse.json({ success: true, invoice: (createResponse as any).invoice })
+  } catch (error: any) {
+    console.error('Failed to create invoice:', error.response?.data || error)
     return NextResponse.json(
-      { error: 'Failed to create invoice via backend' },
+      {
+        error: 'Failed to create invoice',
+        details: error.response?.data?.message || error.message
+      },
       { status: 500 }
     )
   }

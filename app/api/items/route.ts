@@ -1,40 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
 export async function GET(request: NextRequest) {
-  console.log('\n========== FETCHING ITEMS (PROXY) ==========')
-
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    // Get query parameters from the request
     const { searchParams } = new URL(request.url)
-    const queryString = searchParams.toString()
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/api/items${queryString ? '?' + queryString : ''}`)
+    const limit = searchParams.get('limit') || '200'
 
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/items${queryString ? '?' + queryString : ''}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    const zoho = await getZohoClient()
+    const data: any = await zoho.makeRequest('GET', '/items', undefined, {
+      per_page: limit,
     })
 
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
+    // Transform Zoho response to match frontend expectations
+    if (data.items) {
+      data.items = data.items.map((item: any) => ({
+        ...item,
+        price: item.rate || 0, // Map 'rate' to 'price'
+        id: item.item_id || item.id,
+        name: item.name || '',
+        sku: item.sku || '',
+        unit: item.unit || 'qty',
+      }))
     }
 
-    console.log(`[PROXY] Successfully fetched ${data.items?.length || 0} items from backend`)
-
     return NextResponse.json(data)
-
   } catch (error) {
-    console.error('❌ Failed to proxy items request:', error)
+    console.error('Failed to fetch items:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch items from backend' },
+      { error: 'Failed to fetch items' },
       { status: 500 }
     )
   }

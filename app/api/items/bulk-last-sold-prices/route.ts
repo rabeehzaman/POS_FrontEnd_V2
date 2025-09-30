@@ -14,21 +14,23 @@ export async function POST(request: NextRequest) {
     }
 
     const zoho = await getZohoClient()
-    const allPrices = await zoho.storage.getLastSoldPrices()
+    const storage = zoho.storage
+    const lastSoldPrices = await storage.getLastSoldPrices()
+
     const results: Record<string, any> = {}
 
     for (const itemId of itemIds) {
       const key = `${itemId}_${branchId || 'default'}_${taxMode || 'inclusive'}`
-      if (allPrices[key]) {
-        results[itemId] = allPrices[key]
+      if (lastSoldPrices[key]) {
+        results[itemId] = lastSoldPrices[key]
       }
     }
 
     return NextResponse.json({ prices: results })
   } catch (error) {
-    console.error('Failed to get bulk last sold prices:', error)
+    console.error('Failed to fetch bulk last sold prices:', error)
     return NextResponse.json(
-      { error: 'Failed to get bulk last sold prices' },
+      { error: 'Failed to fetch bulk last sold prices' },
       { status: 500 }
     )
   }

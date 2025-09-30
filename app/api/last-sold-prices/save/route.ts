@@ -1,40 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
 export async function POST(request: NextRequest) {
-  console.log('\n========== SAVING LASTSOLD PRICE (PROXY) ==========')
-
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    // Get request body
     const body = await request.json()
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/api/last-sold-prices/save`)
+    const { itemId, branchId, taxMode, price } = body
 
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/last-sold-prices/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    const key = `${itemId}_${branchId || 'default'}_${taxMode || 'inclusive'}`
+
+    const zoho = await getZohoClient()
+    await zoho.storage.saveLastSoldPrice(key, {
+      itemId,
+      branchId,
+      taxMode,
+      price,
+      timestamp: new Date().toISOString()
     })
 
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
-    }
-
-    console.log(`[PROXY] Successfully saved LastSold price to backend`)
-
-    return NextResponse.json(data)
-
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('❌ Failed to proxy LastSold price save request:', error)
+    console.error('Failed to save last sold price:', error)
     return NextResponse.json(
-      { error: 'Failed to save LastSold price to backend' },
+      { error: 'Failed to save last sold price' },
       { status: 500 }
     )
   }

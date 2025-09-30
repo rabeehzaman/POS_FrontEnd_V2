@@ -1,40 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
 export async function GET(request: NextRequest) {
-  console.log('\n========== GETTING LASTSOLD PRICE (PROXY) ==========')
-
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    // Get query parameters
     const { searchParams } = new URL(request.url)
-    const queryString = searchParams.toString()
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/api/last-sold-prices/get?${queryString}`)
+    const itemId = searchParams.get('itemId')
+    const branchId = searchParams.get('branchId')
+    const taxMode = searchParams.get('taxMode')
 
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/last-sold-prices/get?${queryString}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
+    if (!itemId) {
+      return NextResponse.json({ error: 'itemId is required' }, { status: 400 })
     }
 
-    console.log(`[PROXY] Successfully retrieved LastSold price from backend`)
+    const key = `${itemId}_${branchId || 'default'}_${taxMode || 'inclusive'}`
 
-    return NextResponse.json(data)
+    const zoho = await getZohoClient()
+    const prices = await zoho.storage.getLastSoldPrices()
+    const price = prices[key]
 
+    if (price) {
+      return NextResponse.json({ price })
+    } else {
+      return NextResponse.json({ price: null })
+    }
   } catch (error) {
-    console.error('❌ Failed to proxy LastSold price get request:', error)
+    console.error('Failed to get last sold price:', error)
     return NextResponse.json(
-      { error: 'Failed to get LastSold price from backend' },
+      { error: 'Failed to get last sold price' },
       { status: 500 }
     )
   }

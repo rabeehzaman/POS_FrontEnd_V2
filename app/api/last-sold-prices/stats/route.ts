@@ -1,36 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
-export async function GET(request: NextRequest) {
-  console.log('\n========== FETCHING LASTSOLD PRICING STATS (PROXY) ==========')
-
+export async function GET() {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/api/last-sold-prices/stats`)
+    const zoho = await getZohoClient()
+    const prices = await zoho.storage.getLastSoldPrices()
 
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/api/last-sold-prices/stats`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
+    const stats = {
+      totalEntries: Object.keys(prices).length,
+      byBranch: {} as Record<string, number>,
+      byTaxMode: {} as Record<string, number>,
     }
 
-    console.log(`[PROXY] Successfully fetched LastSold pricing stats from backend`)
+    Object.keys(prices).forEach(key => {
+      const parts = key.split('_')
+      const branchId = parts[1] || 'default'
+      const taxMode = parts[2] || 'inclusive'
 
-    return NextResponse.json(data)
+      stats.byBranch[branchId] = (stats.byBranch[branchId] || 0) + 1
+      stats.byTaxMode[taxMode] = (stats.byTaxMode[taxMode] || 0) + 1
+    })
 
+    return NextResponse.json(stats)
   } catch (error) {
-    console.error('❌ Failed to proxy LastSold pricing stats request:', error)
+    console.error('Failed to get last sold price stats:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch LastSold pricing stats from backend' },
+      { error: 'Failed to get last sold price stats' },
       { status: 500 }
     )
   }

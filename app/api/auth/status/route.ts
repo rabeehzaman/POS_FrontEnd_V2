@@ -1,36 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { getZohoClient } from '@/lib/server/zoho/instance'
 
-export async function GET(request: NextRequest) {
-  console.log('\n========== AUTH STATUS (PROXY) ==========')
-
+export async function GET() {
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://retail-pos-backend-production.up.railway.app'
-    
-    console.log(`[PROXY] Forwarding to backend: ${backendUrl}/auth/status`)
-
-    // Forward the request to the backend
-    const backendResponse = await fetch(`${backendUrl}/auth/status`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
-      console.error('[PROXY] Backend auth status error:', data)
-      return NextResponse.json(data, { status: backendResponse.status })
-    }
-
-    console.log(`[PROXY] Auth status: ${data.authenticated ? 'authenticated' : 'not authenticated'}`)
-
-    return NextResponse.json(data)
-
+    const zoho = await getZohoClient()
+    const status = zoho.getAuthStatus()
+    return NextResponse.json(status)
   } catch (error) {
-    console.error('❌ Failed to proxy auth status request:', error)
+    console.error('Auth status check failed:', error)
     return NextResponse.json(
-      { error: 'Failed to check authentication status' },
+      {
+        authenticated: false,
+        hasRefreshToken: false,
+        status: 'not_authenticated',
+        message: 'Authentication check failed'
+      },
       { status: 500 }
     )
   }
