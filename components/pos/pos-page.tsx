@@ -4,13 +4,14 @@ import { useEffect, useState, useCallback } from 'react'
 import { Header } from '@/components/header'
 import { ProductGrid } from '@/components/pos/product-grid'
 import { CartSidebar } from '@/components/pos/cart-sidebar'
+import { FloatingCart } from '@/components/pos/floating-cart'
 import { Spotlight } from '@/components/spotlight/spotlight'
 import { Product, Customer } from '@/lib/stores/pos-store'
 import { useDebounce } from '@/lib/hooks/use-debounced-search'
-import { 
-  useProducts, 
-  useCustomers, 
-  useCartActions, 
+import {
+  useProducts,
+  useCustomers,
+  useCartActions,
   useDataActions,
   useCartSummary,
   useCustomerSelection,
@@ -166,17 +167,17 @@ export function POSPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header 
-        cartCount={cartCount} 
+      <Header
+        cartCount={cartCount}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         syncStatus={isLoadingProducts ? 'syncing' : 'idle'}
         isOnline={isOnline}
       />
-      
+
       <main className="flex-1 overflow-hidden flex">
         <div className="flex-1 overflow-hidden">
-          <ProductGrid 
+          <ProductGrid
             products={products}
             onAddToCart={handleSpotlightAddToCart}
             searchQuery={debouncedSearchQuery}
@@ -184,11 +185,19 @@ export function POSPage() {
             lastSoldPrices={lastSoldPrices}
           />
         </div>
-        
-        <CartSidebar />
+
+        {/* Desktop: Fixed sidebar */}
+        <div className="hidden md:flex">
+          <CartSidebar />
+        </div>
       </main>
 
-      <Spotlight 
+      {/* Mobile: Floating cart button */}
+      <div className="md:hidden">
+        <FloatingCart />
+      </div>
+
+      <Spotlight
         products={products}
         customers={customers}
         onAddToCart={handleSpotlightAddToCart}

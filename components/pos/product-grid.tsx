@@ -19,16 +19,21 @@ interface ProductGridProps {
   lastSoldPrices?: Record<string, number>
 }
 
-export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({ 
-  products, 
-  onAddToCart, 
-  searchQuery = '', 
+export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
+  products,
+  onAddToCart,
+  searchQuery = '',
   isLoading = false,
   lastSoldPrices = {}
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
+  const [isMeasuring, setIsMeasuring] = useState(true)
+  const [useFallback, setUseFallback] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const measureAttemptsRef = useRef(0)
   const { taxMode, pricingStrategy, selectedBranch } = useSettings()
 
   // Get unique categories
@@ -98,18 +103,79 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
   // Calculate row count
   const rowCount = Math.ceil(filteredProducts.length / gridConfig.columnCount)
 
-  // Update container dimensions on resize
+  // Enhanced dimension measurement with ResizeObserver and retry logic
   useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
+    const MAX_ATTEMPTS = 5
+    const FALLBACK_TIMEOUT = 2000 // 2 seconds timeout before using fallback
+
+    const measureDimensions = () => {
+      if (!containerRef.current) return false
+
+      requestAnimationFrame(() => {
+        if (!containerRef.current) return
+
         const { width, height } = containerRef.current.getBoundingClientRect()
-        setContainerDimensions({ width, height })
-      }
+
+        if (width > 0 && height > 0) {
+          setContainerDimensions({ width, height })
+          setIsMeasuring(false)
+          measureAttemptsRef.current = 0
+          return true
+        }
+
+        // Retry if dimensions are still 0
+        measureAttemptsRef.current++
+
+        if (measureAttemptsRef.current < MAX_ATTEMPTS) {
+          retryTimeoutRef.current = setTimeout(measureDimensions, 100 * measureAttemptsRef.current)
+        } else {
+          // After max attempts, enable fallback mode
+          console.warn('Grid dimension measurement failed, using CSS Grid fallback')
+          setUseFallback(true)
+          setIsMeasuring(false)
+        }
+      })
+
+      return false
     }
 
-    updateDimensions()
-    window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
+    // Initial measurement
+    const initialSuccess = measureDimensions()
+
+    // Setup ResizeObserver for robust dimension tracking
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      resizeObserverRef.current = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect
+          if (width > 0 && height > 0) {
+            setContainerDimensions({ width, height })
+            setIsMeasuring(false)
+            setUseFallback(false)
+          }
+        }
+      })
+
+      resizeObserverRef.current.observe(containerRef.current)
+    }
+
+    // Fallback timeout - if still no dimensions after timeout, use CSS Grid
+    const fallbackTimeout = setTimeout(() => {
+      if (containerDimensions.width === 0 && containerDimensions.height === 0) {
+        console.warn('Grid dimensions not measured within timeout, using fallback')
+        setUseFallback(true)
+        setIsMeasuring(false)
+      }
+    }, FALLBACK_TIMEOUT)
+
+    return () => {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect()
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+      }
+      clearTimeout(fallbackTimeout)
+    }
   }, [])
 
   return (
@@ -149,8 +215,8 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
               <Package className="h-16 w-16 text-muted-foreground/40 mb-6" />
               <h3 className="text-xl font-medium mb-3 tracking-tight">No products found</h3>
               <p className="text-muted-foreground/80 mb-6 max-w-sm">
-                {searchQuery 
-                  ? `No products match "${searchQuery}"` 
+                {searchQuery
+                  ? `No products match "${searchQuery}"`
                   : 'No products available in this category'
                 }
               </p>
@@ -165,7 +231,30 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
                 <span>Searching...</span>
               </div>
             </div>
-          ) : containerDimensions.width > 0 ? (
+          ) : isMeasuring ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <ProductCardSkeleton key={index} />
+              ))}
+            </div>
+          ) : useFallback || containerDimensions.width === 0 ? (
+            // CSS Grid fallback for when virtualization fails
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="h-[180px]">
+                  <ProductCard
+                    product={product}
+                    taxMode={taxMode}
+                    pricingStrategy={pricingStrategy}
+                    lastSoldPrices={lastSoldPrices}
+                    selectedBranch={selectedBranch}
+                    onAddToCart={onAddToCart}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Virtualized grid for optimal performance
             <Grid
               columnCount={gridConfig.columnCount}
               columnWidth={gridConfig.columnWidth}
@@ -185,7 +274,7 @@ export const ProductGrid = React.memo<ProductGridProps>(function ProductGrid({
             >
               {VirtualizedProductCard}
             </Grid>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
@@ -204,32 +293,33 @@ interface ProductCardProps {
 const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingStrategy, lastSoldPrices, selectedBranch, onAddToCart }: ProductCardProps) {
   const [showUnitDialog, setShowUnitDialog] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
-  
+  const touchStartPos = useRef<{ x: number; y: number; time: number } | null>(null)
+
   const isLowStock = product.stock < 10
   const isOutOfStock = product.stock === 0
-  
+
   // Check if product has unit conversion capabilities
   const hasUnitConversion = product.hasConversion && product.piecesPerCarton && product.piecesPerCarton > 1
 
   // Calculate display price with LastSold pricing and fallback to default
   let basePrice = product.price // Start with default price
   let isLastSoldPrice = false
-  
+
   // Try to get LastSold price if strategy is enabled
   if (pricingStrategy === 'lastsold' && selectedBranch?.id) {
     const lastSoldPriceKey = `${product.id}_PCS_${selectedBranch.id}_${taxMode}` // Pattern: itemId_unit_branchId_taxMode
     const lastSoldPrice = lastSoldPrices[lastSoldPriceKey]
-    
+
     if (lastSoldPrice) {
       basePrice = lastSoldPrice
       isLastSoldPrice = true
       // LastSold prices are already tax-adjusted, so no need to apply tax again
     }
   }
-  
+
   // Apply tax adjustment only if using default price (not LastSold)
-  const displayPrice = !isLastSoldPrice && taxMode === 'inclusive' 
-    ? basePrice * 1.15 
+  const displayPrice = !isLastSoldPrice && taxMode === 'inclusive'
+    ? basePrice * 1.15
     : basePrice
 
   // Click handlers
@@ -240,7 +330,7 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
 
   const handleMouseUp = () => {
     setIsPressed(false)
-    
+
     // Single click always opens the unit selector dialog
     if (!isOutOfStock) {
       setShowUnitDialog(true)
@@ -251,13 +341,54 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
     setIsPressed(false)
   }
 
+  // Touch handlers with scroll detection
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isOutOfStock) return
+
+    const touch = e.touches[0]
+    touchStartPos.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    }
+    setIsPressed(true)
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    setIsPressed(false)
+
+    if (isOutOfStock || !touchStartPos.current) return
+
+    const touch = e.changedTouches[0]
+    const deltaX = Math.abs(touch.clientX - touchStartPos.current.x)
+    const deltaY = Math.abs(touch.clientY - touchStartPos.current.y)
+    const deltaTime = Date.now() - touchStartPos.current.time
+
+    // Only open dialog if:
+    // 1. Touch duration < 300ms (quick tap)
+    // 2. Movement < 10px (not a scroll/swipe)
+    const isQuickTap = deltaTime < 300
+    const isMinimalMovement = deltaX < 10 && deltaY < 10
+
+    if (isQuickTap && isMinimalMovement) {
+      setShowUnitDialog(true)
+    }
+
+    touchStartPos.current = null
+  }
+
+  const handleTouchMove = () => {
+    // Cancel press state during scroll
+    setIsPressed(false)
+  }
+
   const handleDialogAddToCart = (prod: Product, quantity: number, unit: string, customPrice?: number) => {
     onAddToCart(prod, quantity, unit, customPrice)
   }
 
   return (
     <>
-      <Card 
+      <Card
         className={`group cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/5 hover:scale-[1.02] border-border/40 select-none h-full ${
           isOutOfStock ? 'opacity-40 cursor-not-allowed' : ''
         } ${
@@ -266,8 +397,9 @@ const ProductCard = React.memo(function ProductCard({ product, taxMode, pricingS
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        onTouchStart={handleMouseDown}
-        onTouchEnd={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
       >
       <CardContent className="p-3 flex flex-col h-full">
         {/* Product Header */}
