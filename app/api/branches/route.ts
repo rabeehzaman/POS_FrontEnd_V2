@@ -4,13 +4,18 @@ import { getZohoClient } from '@/lib/server/zoho/instance'
 export async function GET() {
   try {
     const zoho = await getZohoClient()
-    const data = await zoho.makeRequest('GET', '/branches')
+    const data: any = await zoho.makeRequest('GET', '/branches')
 
-    return NextResponse.json(data)
+    // Transform Zoho response to match frontend expectations
+    return NextResponse.json({
+      success: data.code === 0,
+      branches: data.branches || [],
+      message: data.message
+    })
   } catch (error) {
     console.error('Failed to fetch branches:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch branches' },
+      { success: false, error: 'Failed to fetch branches' },
       { status: 500 }
     )
   }
