@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getZohoClient } from '@/lib/server/zoho/instance'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const limit = searchParams.get('limit') || '200'
-
     const zoho = await getZohoClient()
-    const data: any = await zoho.makeRequest('GET', '/items', undefined, {
-      per_page: limit,
-    })
+    const data: any = await zoho.makeRequest('GET', '/items')
 
     // Transform Zoho response to match frontend expectations
     if (data.items) {

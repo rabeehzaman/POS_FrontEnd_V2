@@ -97,7 +97,8 @@ export function SettingsPage() {
     if (authStatus.authenticated) {
       loadBranches()
     }
-  }, [authStatus.authenticated, loadBranches])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authStatus.authenticated])
 
   const handleConnectZoho = () => {
     // Redirect to Zoho OAuth login

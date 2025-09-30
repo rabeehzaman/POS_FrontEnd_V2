@@ -94,14 +94,14 @@ export function POSPage() {
         setIsLoadingProducts(true)
         try {
           // Fetch products
-          const productsResponse = await fetch('/api/items?limit=200')
+          const productsResponse = await fetch('/api/items')
           if (productsResponse.ok) {
             const productsData = await productsResponse.json()
             setProducts(productsData.items || [])
           }
 
           // Fetch customers
-          const customersResponse = await fetch('/api/customers?limit=100')
+          const customersResponse = await fetch('/api/customers')
           if (customersResponse.ok) {
             const customersData = await customersResponse.json()
             setCustomers(customersData.customers || [])
