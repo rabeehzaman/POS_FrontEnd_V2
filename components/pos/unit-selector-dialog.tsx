@@ -286,47 +286,47 @@ export function UnitSelectorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md h-[600px] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
+      <DialogContent className="sm:max-w-md max-h-[90vh] md:max-h-[600px] h-auto flex flex-col">
+        <DialogHeader className="pb-2 md:pb-4">
+          <DialogTitle className="flex items-center gap-2 text-base md:text-lg">
+            <Package className="h-4 w-4 md:h-5 md:w-5" />
             Select Unit & Price
           </DialogTitle>
         </DialogHeader>
 
         {/* Product Name */}
-        <div className="pb-4">
-          <h4 className="font-medium text-sm mb-2">{product.name}</h4>
+        <div className="pb-2 md:pb-4">
+          <h4 className="font-medium text-sm mb-1">{product.name}</h4>
           <p className="text-xs text-muted-foreground">SKU: {product.sku}</p>
         </div>
 
         <Tabs value={activeMainTab} onValueChange={handleHistoryTabChange} className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="w-full mb-4">
-            <TabsTrigger value="addToCart" className="flex-1">Add to Cart</TabsTrigger>
-            <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
+          <TabsList className="w-full mb-2 md:mb-4">
+            <TabsTrigger value="addToCart" className="flex-1 text-sm">Add to Cart</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 text-sm">History</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="addToCart" className="flex-1 min-h-0 space-y-6 overflow-y-auto">
+          <TabsContent value="addToCart" className="flex-1 min-h-0 space-y-3 md:space-y-6 overflow-y-auto">
             {/* Unit Selection */}
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {/* Unit Buttons */}
             <div className="flex gap-2">
               <Button
                 variant={selectedUnit === 'pieces' ? 'default' : 'outline'}
                 onClick={() => setSelectedUnit('pieces')}
-                className="flex-1 h-auto p-3 flex flex-col items-start gap-1"
+                className="flex-1 h-auto p-2 md:p-3 flex flex-col items-start gap-0.5 md:gap-1"
               >
-                <span className="font-medium">Pieces</span>
+                <span className="font-medium text-sm">Pieces</span>
                 <span className="text-xs opacity-80">Individual units</span>
               </Button>
-              
+
               {hasUnitConversion && (
                 <Button
                   variant={selectedUnit === 'cartons' ? 'default' : 'outline'}
                   onClick={() => setSelectedUnit('cartons')}
-                  className="flex-1 h-auto p-3 flex flex-col items-start gap-1"
+                  className="flex-1 h-auto p-2 md:p-3 flex flex-col items-start gap-0.5 md:gap-1"
                 >
-                  <span className="font-medium">Carton</span>
+                  <span className="font-medium text-sm">Carton</span>
                   <span className="text-xs opacity-80">
                     {product.piecesPerCarton && `${product.piecesPerCarton} pieces`}
                   </span>
@@ -390,17 +390,8 @@ export function UnitSelectorDialog({
             </div>
           </div>
 
-          {/* Unit Conversion Info */}
-          {unitInfo && (
-            <div className="p-2 bg-muted/30 rounded-md">
-              <p className="text-xs text-muted-foreground">
-                📦 {unitInfo.display}
-              </p>
-            </div>
-          )}
-
           {/* Quantity Input */}
-          <div className="space-y-2">
+          <div className="space-y-1.5 md:space-y-2">
             <div className="text-sm font-medium">Quantity</div>
             <Input
               ref={quantityRef}
@@ -413,20 +404,29 @@ export function UnitSelectorDialog({
             />
           </div>
 
-          {/* Total Summary */}
-          <div className="p-4 bg-muted/30 rounded-lg space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Quantity:</span>
-              <span className="font-medium">{quantityInput} {selectedUnit === 'pieces' ? 'piece(s)' : 'carton(s)'}</span>
+          {/* Unit Conversion Info */}
+          {unitInfo && (
+            <div className="p-1.5 md:p-2 bg-muted/30 rounded-md">
+              <p className="text-xs text-muted-foreground">
+                📦 {unitInfo.display}
+              </p>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Unit Price:</span>
+          )}
+
+          {/* Total Summary - Compact */}
+          <div className="p-2.5 md:p-4 bg-muted/30 rounded-lg space-y-1.5 md:space-y-2">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Qty:</span>
+              <span className="font-medium">{quantityInput} {selectedUnit === 'pieces' ? 'pc(s)' : 'ctn(s)'}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Unit Price:</span>
               <span className="font-medium">{(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput)} SAR</span>
             </div>
-            <div className="border-t border-border/50 pt-2">
+            <div className="border-t border-border/50 pt-1.5 md:pt-2">
               <div className="flex justify-between items-center">
-                <span className="font-medium">Total:</span>
-                <span className="text-xl font-bold">
+                <span className="font-medium text-sm md:text-base">Total:</span>
+                <span className="text-lg md:text-xl font-bold">
                   {((parseInt(quantityInput) || 1) * parseFloat(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput) || 0).toFixed(2)} SAR
                 </span>
               </div>
@@ -457,20 +457,20 @@ export function UnitSelectorDialog({
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="sales" className="flex-1 min-h-0">
-                  <div className="h-full overflow-y-auto">
-                    <TransactionsList 
-                      transactions={historyData?.salesTransactions || []} 
+                <TabsContent value="sales" className="flex-1 min-h-0 overflow-hidden">
+                  <div className="h-full overflow-y-auto scroll-smooth px-1 md:px-2 pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-gray-400">
+                    <TransactionsList
+                      transactions={historyData?.salesTransactions || []}
                       historyData={historyData}
                       loading={loadingHistory}
                     />
                   </div>
                 </TabsContent>
 
-                <TabsContent value="purchases" className="flex-1 min-h-0">
-                  <div className="h-full overflow-y-auto">
-                    <TransactionsList 
-                      transactions={historyData?.purchaseTransactions || []} 
+                <TabsContent value="purchases" className="flex-1 min-h-0 overflow-hidden">
+                  <div className="h-full overflow-y-auto scroll-smooth px-1 md:px-2 pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-gray-400">
+                    <TransactionsList
+                      transactions={historyData?.purchaseTransactions || []}
                       historyData={historyData}
                       loading={loadingHistory}
                     />
@@ -481,12 +481,13 @@ export function UnitSelectorDialog({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="gap-2 pt-2 md:pt-4">
+          <Button variant="outline" onClick={onClose} className="text-sm md:text-base">
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleAddToCart}
+            className="text-sm md:text-base"
             disabled={
               !quantityInput ||
               !(selectedUnit === 'pieces' ? piecePriceInput : cartonPriceInput) ||

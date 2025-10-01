@@ -14,7 +14,8 @@ export async function GET() {
     while (hasMore) {
       const data: any = await zoho.makeRequest('GET', '/items', undefined, {
         per_page: perPage,
-        page: page
+        page: page,
+        status: 'active' // Only fetch active items
       })
 
       if (data.items && data.items.length > 0) {

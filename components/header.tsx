@@ -14,17 +14,38 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void
   syncStatus?: 'idle' | 'syncing' | 'error'
   isOnline?: boolean
+  lastSyncTime?: number | null
+  onRefresh?: () => void
 }
 
-export const Header = React.memo<HeaderProps>(function Header({ 
-  cartCount = 0, 
-  searchQuery = '', 
-  onSearchChange, 
+export const Header = React.memo<HeaderProps>(function Header({
+  cartCount = 0,
+  searchQuery = '',
+  onSearchChange,
   syncStatus = 'idle',
-  isOnline = true 
+  isOnline = true,
+  lastSyncTime = null,
+  onRefresh
 }) {
   const { theme, setTheme } = useTheme()
   const router = useRouter()
+
+  // Format last sync time
+  const formatSyncTime = (timestamp: number | null) => {
+    if (!timestamp) return 'Never synced'
+
+    const now = Date.now()
+    const diff = now - timestamp
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+
+    if (minutes < 1) return 'Just now'
+    if (minutes < 60) return `${minutes}m ago`
+    if (hours < 24) return `${hours}h ago`
+
+    const date = new Date(timestamp)
+    return date.toLocaleDateString()
+  }
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
@@ -49,13 +70,22 @@ export const Header = React.memo<HeaderProps>(function Header({
           {syncStatus === 'syncing' && (
             <div className="flex items-center space-x-1 text-xs text-muted-foreground">
               <RefreshCw className="h-3 w-3 animate-spin" />
-              <span>Syncing...</span>
+              <span className="hidden sm:inline">Syncing...</span>
             </div>
           )}
           {syncStatus === 'error' && !isOnline && (
             <div className="flex items-center space-x-1 text-xs text-yellow-600 dark:text-yellow-500">
               <WifiOff className="h-3 w-3" />
-              <span>Offline</span>
+              <span className="hidden sm:inline">Offline</span>
+            </div>
+          )}
+          {syncStatus === 'idle' && lastSyncTime && (
+            <div
+              className="flex items-center space-x-1 text-xs text-muted-foreground/70 cursor-help"
+              title={`Last synced: ${new Date(lastSyncTime).toLocaleString()}`}
+            >
+              <Wifi className="h-3 w-3" />
+              <span className="hidden md:inline">{formatSyncTime(lastSyncTime)}</span>
             </div>
           )}
         </div>
@@ -76,6 +106,21 @@ export const Header = React.memo<HeaderProps>(function Header({
 
         {/* Right: Actions */}
         <div className="flex items-center space-x-1">
+          {/* Refresh Button (Desktop only) */}
+          {onRefresh && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onRefresh}
+              disabled={syncStatus === 'syncing'}
+              className="hidden md:flex h-8 w-8 rounded-full hover:bg-muted/50 transition-colors"
+              title="Refresh data"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+              <span className="sr-only">Refresh data</span>
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="icon"
@@ -87,7 +132,7 @@ export const Header = React.memo<HeaderProps>(function Header({
             <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
             <span className="sr-only">Toggle theme</span>
           </Button>
-          
+
           <Button
             variant="ghost"
             size="icon"
